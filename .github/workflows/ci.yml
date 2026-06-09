@@ -1,0 +1,39 @@
+# Pipeline de Integración Continua (CI).
+# GitHub ejecuta este workflow automáticamente en cada push y pull request.
+# Valida que la estructura del proyecto esté completa y que los tests pasen,
+# sin necesidad de API keys (los tests mockean el LLM).
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # En el repositorio, el proyecto vive en la raíz (git se inicializó dentro
+    # de estimador-cag/), así que los pasos se ejecutan desde la raíz del repo.
+
+    steps:
+      # 1. Descarga el código del repo en la máquina del runner.
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      # 2. Instala uv (el gestor de paquetes que usa el proyecto).
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+
+      # 3. Instala Python 3.11 y las dependencias declaradas en pyproject/uv.lock.
+      - name: Instalar dependencias
+        run: uv sync --python 3.11
+
+      # 4. Valida que la estructura de carpetas y archivos esté completa.
+      - name: Verificar estructura del proyecto
+        run: uv run python scripts/check_structure.py
+
+      # 5. Ejecuta la batería de tests (no requiere API key: el LLM está mockeado).
+      - name: Ejecutar tests
+        run: uv run pytest -v

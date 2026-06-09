@@ -1,0 +1,26 @@
+Reunión de kickoff — Proyecto "Portal de Reservas" — Cliente: Clínica Dental Sonríe
+
+Asistentes: Director de la clínica, responsable de recepción, nuestro equipo técnico.
+
+El cliente explica que actualmente gestionan las citas por teléfono y en una hoja de
+cálculo compartida, lo que genera dobles reservas y huecos sin cubrir. Quieren un portal
+web donde los pacientes puedan:
+
+- Registrarse e iniciar sesión (también con su cuenta de Google).
+- Ver la disponibilidad de cada dentista por especialidad y reservar una cita.
+- Recibir un email y un SMS de recordatorio 24 horas antes.
+- Cancelar o reprogramar su cita hasta 12 horas antes.
+
+Por el lado de la clínica, recepción necesita un panel de administración para ver la
+agenda del día, bloquear franjas (vacaciones, urgencias) y dar de alta nuevos dentistas.
+El director quiere un pequeño informe mensual con número de citas, cancelaciones y
+ocupación por dentista.
+
+Tienen ya un logotipo y una guía de marca, pero no hay diseño de las pantallas. Usan
+Google Workspace para el correo. No tienen sistema de pago online: las consultas se
+cobran presencialmente, así que de momento no hace falta pasarela de pago.
+
+El director comenta que les gustaría tenerlo funcionando antes de la campaña de
+septiembre, es decir, en unos 2 meses. Preguntan también si más adelante se podría
+añadir una app móvil, pero por ahora se conforman con que la web sea usable desde el
+móvil.

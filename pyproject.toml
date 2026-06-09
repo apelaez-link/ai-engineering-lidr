@@ -1,0 +1,46 @@
+[project]
+name = "estimador-pro"
+version = "0.2.0"
+description = "Estimador de software CAG con wrapper de proveedores (abstracción + fallback), cacheo, streaming y observabilidad. Sesión 03 de AI Engineering."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic-settings>=2.6.0",
+    "python-dotenv>=1.0.1",
+    # Abstracción de proveedores (lección "Abstracción de proveedores y fallback").
+    # OJO seguridad de dependencias: las versiones 1.82.7 y 1.82.8 de LiteLLM fueron
+    # comprometidas en marzo de 2026; las excluimos explícitamente. Buena práctica:
+    # fijar/pinar versiones de cualquier dependencia.
+    "litellm>=1.74,!=1.82.7,!=1.82.8",
+    # SDKs (LiteLLM los usa por debajo; se dejan explícitos como referencia).
+    "openai>=1.54.0",
+    "anthropic>=0.39.0",
+    # Observabilidad (lección "Observabilidad, logging y trazabilidad").
+    "structlog>=24.4.0",
+    # Cacheo opcional con Redis (lección "Cacheo inteligente"). El backend por
+    # defecto es en memoria, así que Redis solo hace falta si CACHE_BACKEND=redis.
+    "redis>=5.2.0",
+    # Interfaz conversacional (ejercicio entregable + lección "Interfaces conversacionales").
+    "streamlit>=1.40.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27.0",
+    "pytest>=8.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+# pythonpath="." permite importar `app` sin instalar el paquete.
+# testpaths limita el descubrimiento de tests a la carpeta tests/.
+pythonpath = ["."]
+testpaths = ["tests"]
