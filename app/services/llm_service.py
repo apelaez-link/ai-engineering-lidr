@@ -107,6 +107,8 @@ def generate_estimation(transcription: str, history: list[dict] | None = None) -
         "tokens_out": result.tokens_out,
         "cost_usd": result.cost_usd,
         "latency_ms": result.latency_ms,
+        # "length" = la respuesta se truncó por max_tokens; "stop" = terminó bien.
+        "finish_reason": result.finish_reason,
     }
 
 

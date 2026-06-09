@@ -313,11 +313,17 @@ class LLMWrapper:
                     api_key=api_key,
                     stream=True,
                 )
+                finish_reason = "stop"
                 for chunk in response:
                     delta = chunk.choices[0].delta.content
                     if delta:
                         chunks.append(delta)
                         yield delta  # <- el usuario ve el texto "escribiéndose"
+                    # El último chunk trae el finish_reason ("stop" si terminó,
+                    # "length" si se truncó por max_tokens). Lo capturamos para no
+                    # perder la detección de truncamiento también en streaming.
+                    if chunk.choices[0].finish_reason:
+                        finish_reason = chunk.choices[0].finish_reason
 
                 full_text = "".join(chunks)
                 latency_ms = (time.perf_counter() - start) * 1000
@@ -334,7 +340,7 @@ class LLMWrapper:
                     latency_ms=round(latency_ms, 1),
                     cache_hit=False,
                     fallback_used=is_fallback,
-                    finish_reason="stop",
+                    finish_reason=finish_reason,
                     providers_tried=tried.copy(),
                 )
                 call_log.info(

@@ -89,3 +89,44 @@ def test_complete_without_providers_raises(monkeypatch) -> None:
 
     with pytest.raises(ValueError):
         LLMWrapper().complete("system", [{"role": "user", "content": "x"}])
+
+
+def _stream_chunk(content, finish_reason=None):
+    """Imita un chunk de litellm.completion(stream=True)."""
+    return SimpleNamespace(
+        choices=[SimpleNamespace(
+            delta=SimpleNamespace(content=content),
+            finish_reason=finish_reason,
+        )]
+    )
+
+
+@patch("app.services.llm_wrapper._stream_usage", return_value=(20, 5, 0.0))
+@patch("app.services.llm_wrapper.litellm.completion")
+def test_stream_captures_finish_reason_length(mock_completion, _usage) -> None:
+    # El último chunk marca finish_reason="length" (truncado). El wrapper debe
+    # capturarlo y volcarlo en meta, en vez de asumir siempre "stop".
+    def fake_stream(*args, **kwargs):
+        yield _stream_chunk("## Esti")
+        yield _stream_chunk("mación")
+        yield _stream_chunk(None, finish_reason="length")  # cierre: truncado
+    mock_completion.side_effect = fake_stream
+
+    meta: dict = {}
+    text = "".join(LLMWrapper().stream("system", [{"role": "user", "content": "x"}], meta=meta))
+
+    assert text == "## Estimación"
+    assert meta["finish_reason"] == "length"
+
+
+@patch("app.services.llm_wrapper.litellm.completion_cost", return_value=0.0)
+@patch("app.services.llm_wrapper.litellm.completion")
+def test_generate_estimation_surfaces_finish_reason(mock_completion, _cost) -> None:
+    # La capa de negocio debe propagar finish_reason hasta el dict de respuesta,
+    # para que la API y la UI puedan avisar de truncamiento.
+    from app.services.llm_service import generate_estimation
+
+    mock_completion.return_value = fake_response()  # finish_reason="stop"
+    result = generate_estimation("Una transcripción cualquiera.")
+
+    assert result["finish_reason"] == "stop"

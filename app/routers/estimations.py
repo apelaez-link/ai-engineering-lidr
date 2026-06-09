@@ -75,6 +75,10 @@ class EstimationResponse(BaseModel):
     tokens_out: int = Field(default=0, description="Tokens de salida (respuesta).")
     cost_usd: float = Field(default=0.0, description="Coste estimado de la llamada en USD.")
     latency_ms: float = Field(default=0.0, description="Latencia de la llamada en milisegundos.")
+    finish_reason: str | None = Field(
+        default=None,
+        description="Motivo de fin: 'stop' (terminó) o 'length' (se truncó por max_tokens).",
+    )
 
 
 @router.post("/estimate", response_model=EstimationResponse)

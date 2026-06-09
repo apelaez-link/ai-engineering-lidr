@@ -117,6 +117,14 @@ if prompt := st.chat_input("Pega aquí la transcripción de la reunión…"):
             full_response = f"⚠️ Error al llamar al LLM: {exc}"
             st.error(full_response)
 
+        # Aviso de truncamiento: si el modelo cortó por límite de tokens, una
+        # estimación incompleta es peor que ninguna -> avisamos explícitamente.
+        if meta.get("finish_reason") == "length":
+            st.warning(
+                "⚠️ La estimación se truncó por el límite de tokens "
+                "(`LLM_MAX_TOKENS`). Súbelo para obtener la respuesta completa."
+            )
+
     # 3) Persistir la respuesta y las métricas para el sidebar.
     st.session_state.messages.append({"role": "assistant", "content": full_response})
     if meta:
