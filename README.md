@@ -1,4 +1,13 @@
-# Estimador CAG — Pro (Sesión 03)
+# Estimador CAG — Proyecto 1 (curso AI Engineering LIDR)
+
+> 📂 **Sobre este repositorio (`ai-engineering-lidr`).** Es el repo **continuo** del curso.
+> El proyecto crece sesión a sesión y cada entrega se organiza así:
+> - `main` → última versión acumulada del proyecto.
+> - Una rama por sesión (`sesion-03`, `sesion-04`, …) que se mergea a `main` al terminar.
+> - Un tag por entrega (`entrega-sesion-03`, …) que marca el estado exacto entregado.
+>
+> Para revisar lo entregado en una sesión concreta: `git checkout entrega-sesion-NN`.
+> El historial previo (Sesión 2 — scaffolding) vive en su propio repo `01-scaffolding-proyecto-fast-api`.
 
 De **prototipo** a **producto**. Partiendo del endpoint CAG de la sesión 02 (un
 servicio FastAPI que convierte transcripciones de reunión en estimaciones de

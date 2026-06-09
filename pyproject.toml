@@ -1,7 +1,7 @@
 [project]
-name = "estimador-pro"
+name = "proyecto-1-estimador"
 version = "0.2.0"
-description = "Estimador de software CAG con wrapper de proveedores (abstracción + fallback), cacheo, streaming y observabilidad. Sesión 03 de AI Engineering."
+description = "Proyecto 1 (estimador de software CAG) del curso AI Engineering LIDR. Wrapper de proveedores (abstracción + fallback), cacheo, streaming y observabilidad. Evoluciona sesión a sesión."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
