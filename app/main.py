@@ -5,8 +5,10 @@ registra el router de estimaciones bajo el prefijo /api/v1 y se expone /health.
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.logging_config import configure_logging, get_logger
 from app.routers import estimations
@@ -40,6 +42,12 @@ app = FastAPI(
 # Registramos el router. Todos sus endpoints colgarán de /api/v1
 # -> POST /estimate queda en POST /api/v1/estimate, etc.
 app.include_router(estimations.router, prefix="/api/v1")
+
+# Ficheros estáticos: demo de streaming SSE en HTML puro (sin Streamlit).
+# Disponible en http://localhost:8000/static/sse_demo.html
+# Usamos una ruta absoluta basada en este fichero para no depender del cwd.
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 
 @app.get("/health", tags=["health"])

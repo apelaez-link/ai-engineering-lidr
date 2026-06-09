@@ -143,11 +143,28 @@ La respuesta síncrona incluye los metadatos de trazabilidad:
 | `ENV` | `development` | `development` → logs de consola; `production` → JSON. |
 | `LOG_LEVEL` | `INFO` | Nivel mínimo de log. |
 
+## Extras de la sesión 3 (retos, comparando con el repo del profesor)
+
+Más allá del ejercicio, añadimos cuatro mejoras inspiradas en el repo de referencia
+(`LIDR-academy/ai-engineering`), con criterio propio:
+
+- **Evaluación estructural** (`app/services/evaluation.py`) — comprueba por regex (sin LLM)
+  que la estimación tenga título, desglose, total, equipo, duración y supuestos, y que **la
+  suma de horas cuadre con el total** (caza la mala aritmética del modelo). `/estimate`
+  devuelve un campo `evaluation` (score 0-1 + issues) y la UI lo muestra en el sidebar. Es la
+  semilla de un *guardrail* de outputs (sesión 4).
+- **Demo de streaming en HTML puro** — `http://localhost:8000/static/sse_demo.html`: consume
+  el endpoint SSE sin Streamlit, con un parser SSE en JavaScript.
+- **Redis con Docker** — `docker compose up -d` levanta un Redis; pon `CACHE_BACKEND=redis`
+  en `.env` y la caché pasa a ser persistente y compartida.
+- **Tests más duros** — `fakeredis` para probar el backend Redis sin servidor, y un test del
+  endpoint SSE (`tests/test_estimate_stream.py`).
+
 ## Tests
 
 ```bash
 uv run python scripts/check_structure.py   # valida el scaffold
-uv run pytest -v                            # 19 tests, sin API key (LLM mockeado)
+uv run pytest -v                            # 27 tests, sin API key (LLM mockeado)
 ```
 
 ## Aprende cómo funciona

@@ -24,6 +24,7 @@ load_dotenv()
 
 from app.config import get_settings  # noqa: E402
 from app.context.examples import ESTIMATION_EXAMPLES  # noqa: E402
+from app.services.evaluation import evaluate_estimation  # noqa: E402
 from app.services.llm_service import _build_system_prompt, stream_estimation  # noqa: E402
 
 st.set_page_config(page_title="Estimador de software (CAG)", page_icon="🧮", layout="wide")
@@ -39,6 +40,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "last_meta" not in st.session_state:
     st.session_state.last_meta = None
+if "last_eval" not in st.session_state:
+    st.session_state.last_eval = None
 
 
 # ── Nivel 3: panel lateral con el contexto CAG y métricas ───────────────────
@@ -78,6 +81,24 @@ with st.sidebar:
         st.caption(" · ".join(flags) if flags else "✅ llamada directa al proveedor primario")
     else:
         st.caption("Aún no has hecho ninguna estimación.")
+
+    # Calidad estructural de la última estimación (reto: evaluación sin LLM).
+    eval_ = st.session_state.last_eval
+    if eval_:
+        st.divider()
+        st.subheader("✅ Calidad de la estimación")
+        st.metric("Score estructural", f"{eval_.get('score', 0) * 100:.0f}%")
+        if eval_.get("hours_match") is False:
+            st.error(
+                f"Aritmética: suma de tareas {eval_.get('sum_task_hours')} h "
+                f"≠ total declarado {eval_.get('declared_total_hours')} h"
+            )
+        issues = eval_.get("issues") or []
+        if issues:
+            for issue in issues:
+                st.caption(f"• {issue}")
+        else:
+            st.caption("Sin problemas estructurales detectados.")
 
 
 # Avisamos si no hay ninguna API key configurada (causa de error más común).
@@ -125,8 +146,11 @@ if prompt := st.chat_input("Pega aquí la transcripción de la reunión…"):
                 "(`LLM_MAX_TOKENS`). Súbelo para obtener la respuesta completa."
             )
 
-    # 3) Persistir la respuesta y las métricas para el sidebar.
+    # 3) Persistir la respuesta, las métricas y la evaluación para el sidebar.
     st.session_state.messages.append({"role": "assistant", "content": full_response})
     if meta:
         st.session_state.last_meta = meta
+        st.session_state.last_eval = evaluate_estimation(
+            full_response, meta.get("finish_reason")
+        ).model_dump()
         st.rerun()  # refresca el sidebar con las métricas de esta llamada

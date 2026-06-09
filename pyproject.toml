@@ -30,6 +30,8 @@ dependencies = [
 dev = [
     "httpx>=0.27.0",
     "pytest>=8.3.0",
+    # Redis en memoria para tests: prueba el backend de caché sin un Redis real.
+    "fakeredis>=2.20.0",
 ]
 
 [build-system]

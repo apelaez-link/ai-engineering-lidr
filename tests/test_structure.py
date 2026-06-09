@@ -14,10 +14,13 @@ REQUIRED_PATHS = [
     "app/logging_config.py",
     "app/services/llm_service.py",
     "app/services/llm_wrapper.py",
+    "app/services/evaluation.py",
     "app/cache/llm_cache.py",
     "app/context/examples.py",
     "app/routers/estimations.py",
+    "app/static/sse_demo.html",
     "streamlit_app.py",
+    "docker-compose.yml",
     "fixtures/sample_transcription.txt",
     ".env.example",
 ]
