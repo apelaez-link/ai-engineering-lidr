@@ -17,6 +17,7 @@ from collections.abc import Iterator
 
 from app.config import get_settings
 from app.context.examples import ESTIMATION_EXAMPLES
+from app.services.evaluation import evaluate_estimation
 from app.services.llm_wrapper import wrapper
 
 
@@ -109,6 +110,8 @@ def generate_estimation(transcription: str, history: list[dict] | None = None) -
         "latency_ms": result.latency_ms,
         # "length" = la respuesta se truncó por max_tokens; "stop" = terminó bien.
         "finish_reason": result.finish_reason,
+        # Evaluación estructural de la estimación (regex, sin LLM): score + issues.
+        "evaluation": evaluate_estimation(result.content, result.finish_reason).model_dump(),
     }
 
 

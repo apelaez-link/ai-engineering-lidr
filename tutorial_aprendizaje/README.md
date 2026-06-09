@@ -31,6 +31,7 @@ explica una capa que añadimos en la sesión 03, con el *porqué* de cada decisi
 | 03 | [Cacheo inteligente](03-cacheo-inteligente.md) | Exact-match, clave determinista, TTL, invalidación | `app/cache/llm_cache.py` |
 | 04 | [Streaming y respuestas largas](04-streaming.md) | StreamingResponse vs SSE vs WebSockets; `st.write_stream` | router `/estimate/stream` |
 | 05 | [Observabilidad y trazabilidad](05-observabilidad.md) | structlog, logs como datos, qué medir en cada llamada | `app/logging_config.py` |
+| 06 | [Retos extra (vs repo del profesor)](06-retos-extra.md) | Evaluación estructural, demo SSE HTML, Redis con Docker, fakeredis | `app/services/evaluation.py` |
 
 ## Material del curso (teoría)
 

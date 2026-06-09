@@ -1,0 +1,32 @@
+# Redis para la caché (lección "Cacheo inteligente de respuestas").
+#
+# Levanta un Redis local sin instalar nada en tu sistema:
+#   docker compose up -d
+#
+# Luego, en tu .env:
+#   CACHE_BACKEND=redis
+#   REDIS_URL=redis://localhost:6379/0
+#
+# y arranca la app como siempre (uvicorn / streamlit). La caché pasará a ser
+# persistente y compartida entre procesos, en vez de en memoria.
+#
+# Parar y limpiar:   docker compose down            (conserva los datos)
+#                    docker compose down -v          (borra también el volumen)
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: estimador-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis_data:

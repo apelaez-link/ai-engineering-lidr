@@ -46,3 +46,21 @@ def test_inmemory_respects_ttl() -> None:
     cache = LLMCache(InMemoryBackend(), ttl_seconds=0)
     cache.set("k", {"content": "x"})
     assert cache.get("k") is None
+
+
+def test_redis_backend_with_fakeredis(monkeypatch) -> None:
+    # Probamos el camino Redis SIN un servidor real, usando fakeredis (drop-in).
+    import fakeredis
+    import redis
+
+    fake = fakeredis.FakeStrictRedis(decode_responses=True)
+    monkeypatch.setattr(redis, "from_url", lambda *a, **k: fake)
+
+    from app.cache.llm_cache import LLMCache, RedisBackend
+
+    cache = LLMCache(RedisBackend("redis://fake:6379"), ttl_seconds=60)
+    assert cache.get("k") is None  # miss
+    cache.set("k", {"content": "estimación", "model": "gpt-4o-mini"})
+    assert cache.get("k")["content"] == "estimación"  # hit
+    cache.clear()
+    assert cache.get("k") is None  # tras clear, miss

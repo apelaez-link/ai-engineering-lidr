@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.services.evaluation import EstimationEvaluation
 from app.services.llm_service import generate_estimation, stream_estimation
 
 # El prefijo /api/v1 se lo pone main.py al incluir este router.
@@ -78,6 +79,10 @@ class EstimationResponse(BaseModel):
     finish_reason: str | None = Field(
         default=None,
         description="Motivo de fin: 'stop' (terminó) o 'length' (se truncó por max_tokens).",
+    )
+    evaluation: EstimationEvaluation | None = Field(
+        default=None,
+        description="Evaluación estructural de la estimación (score 0-1 + issues detectados).",
     )
 
 
