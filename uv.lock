@@ -1558,6 +1558,8 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "fastapi" },
+    { name = "httpx" },
+    { name = "jinja2" },
     { name = "litellm" },
     { name = "openai" },
     { name = "pydantic-settings" },
@@ -1571,7 +1573,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "fakeredis" },
-    { name = "httpx" },
     { name = "pytest" },
 ]
 
@@ -1579,6 +1580,8 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.39.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "jinja2", specifier = ">=3.1.0" },
     { name = "litellm", specifier = ">=1.74,!=1.82.7,!=1.82.8" },
     { name = "openai", specifier = ">=1.54.0" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },
@@ -1592,7 +1595,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "fakeredis", specifier = ">=2.20.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
     { name = "pytest", specifier = ">=8.3.0" },
 ]
 

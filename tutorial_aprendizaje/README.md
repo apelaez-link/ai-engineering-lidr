@@ -1,5 +1,9 @@
 # 🎓 Tutorial de aprendizaje — Sesión 03: Patrones de diseño para wrappers de modelos
 
+> 🆕 **¿Buscas la Sesión 04 (Productos IA avanzados)?** Su tutorial está en
+> [`sesion-04/`](sesion-04/README.md): del chat a interfaz de producto, prompts Jinja2
+> versionados, y la teoría del directo (datos estructurados, guardrails, cacheo semántico).
+
 Esta carpeta es una **herramienta de estudio sobre tu propio proyecto**. Cada lección
 explica una capa que añadimos en la sesión 03, con el *porqué* de cada decisión y un
 **reto práctico** al final para que toques el código y veas el efecto.

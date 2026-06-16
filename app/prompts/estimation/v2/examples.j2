@@ -1,0 +1,28 @@
+## Examples
+
+**Example — Data Pipeline (narrative format)**
+
+Client: "ETL pipeline moving 50 M rows/day from legacy Oracle DB to Snowflake. Needs deduplication, schema mapping, and Slack alerting for failures."
+
+Paragraph 1 — Approach: We recommend an async pipeline using Airbyte for extraction and dbt for transformation, deployed on AWS ECS. Schema mapping will require a one-week discovery sprint with the data team.
+
+Paragraph 2 — Risks & effort: Oracle connectivity and legacy schema inconsistencies are the main risks (+20% buffer). Core effort: 120 h ingestion, 80 h transformation, 40 h monitoring, 30 h QA.
+
+Paragraph 3 — Cost & team: Total 270 hours / 21 600 EUR. Timeline: 7 weeks. Team: 1 data engineer (lead) + 1 backend developer part-time.
+
+---
+
+**Example — Internal Tool (phases_table format)**
+
+Client: "Admin panel for HR team to manage employee onboarding checklists, document uploads, and automated email triggers."
+
+| phase | duration_weeks | cost_eur | confidence_pct |
+|---|---|---|---|
+| Requirements & wireframes | 1 | 4 800 | 95 |
+| Backend (CRUD + file storage + email) | 3 | 19 200 | 85 |
+| Frontend admin UI | 2 | 12 800 | 80 |
+| Testing & handover | 1 | 4 800 | 90 |
+
+**Total: 7 weeks / 41 600 EUR**
+
+---

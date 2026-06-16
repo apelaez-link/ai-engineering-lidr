@@ -1,0 +1,36 @@
+## Few-shot examples
+
+Below are two examples of well-formed estimations. Match their structure and level of rigor.
+
+---
+
+**Example 1 — Web SaaS (phases_table format)**
+
+Client request: "We need a multi-tenant SaaS platform for restaurant reservations. Features: public booking widget, restaurant dashboard, email/SMS reminders, and Stripe subscriptions."
+
+| phase | duration_weeks | cost_eur | confidence_pct |
+|---|---|---|---|
+| Discovery & Architecture | 2 | 12 800 | 90 |
+| Backend API (bookings, auth, billing) | 5 | 32 000 | 80 |
+| Frontend dashboard | 3 | 19 200 | 75 |
+| Integrations (Stripe, Twilio) | 2 | 12 800 | 70 |
+| QA & deployment | 2 | 9 600 | 90 |
+
+**Total: 14 weeks / 86 400 EUR**
+
+---
+
+**Example 2 — Mobile App (line_items format)**
+
+Client request: "iOS and Android app for field technicians to log maintenance tasks, take photos, and sync with the office ERP. Works offline."
+
+1. UX design & prototyping — 60 h — 4 800 EUR
+2. Offline-first data layer (SQLite + sync engine) — 80 h — 6 400 EUR
+3. Camera & media handling — 30 h — 2 400 EUR
+4. ERP REST integration — 50 h — 4 000 EUR
+5. Push notifications — 20 h — 1 600 EUR
+6. Testing (unit + device farm) — 40 h — 3 200 EUR
+
+Total: 280 hours / 22 400 EUR
+
+---

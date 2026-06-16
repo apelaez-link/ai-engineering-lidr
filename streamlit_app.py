@@ -1,78 +1,64 @@
-"""Interfaz conversacional con Streamlit para el estimador (EJERCICIO de la sesión 03).
+"""Interfaz de producto del estimador (sesión 04).
+
+Sustituye el chat conversacional de la sesión 03 por un formulario tipado:
+el usuario rellena los campos estructurados (tipo de proyecto, nivel de detalle,
+formato de salida y descripción) y recibe una estimación bien formateada.
+
+La UI habla con el backend FastAPI vía HTTP (httpx), de forma que la separación
+de responsabilidades es clara: Streamlit es SOLO presentación, la lógica vive
+en la API. La URL del backend se lee de la variable de entorno API_BASE_URL
+(default http://localhost:8000) y la API key NUNCA se hardcodea aquí.
 
 Ejecútalo con:
     uv run streamlit run streamlit_app.py
-
-Cubre los tres niveles del ejercicio:
-  - Nivel 1 (chat básico):   st.chat_message / st.chat_input + historial en session_state.
-  - Nivel 2 (streaming):     st.write_stream sobre el generador del wrapper.
-  - Nivel 3 (contexto CAG):   sidebar con system prompt, ejemplos CAG y métricas de la
-                              última llamada (modelo, tokens, latencia, coste, caché...).
-
-Decisión clave: la UI NO habla con OpenAI/Anthropic directamente. Reutiliza la lógica
-del proyecto (`stream_estimation`), que pasa por el WRAPPER y por tanto hereda gratis
-la abstracción de proveedores, el fallback, el cacheo y la trazabilidad. El system
-prompt es exactamente el mismo que usa el endpoint CAG. La API key se lee del .env
-(vía Pydantic Settings) o de st.secrets; nunca está hardcodeada.
 """
 
+import os
+
+import httpx
 import streamlit as st
 from dotenv import load_dotenv
 
-# Carga el .env (claves de API) antes de importar la config/servicios.
+# Cargamos el .env antes de leer variables de entorno para que funcione en local.
 load_dotenv()
 
-from app.config import get_settings  # noqa: E402
-from app.context.examples import ESTIMATION_EXAMPLES  # noqa: E402
-from app.services.evaluation import evaluate_estimation  # noqa: E402
-from app.services.llm_service import _build_system_prompt, stream_estimation  # noqa: E402
+# URL del backend: configurable desde el entorno (útil en Docker / CI / staging).
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-st.set_page_config(page_title="Estimador de software (CAG)", page_icon="🧮", layout="wide")
-st.title("🧮 Estimador de software")
-st.caption(
-    "Pega la transcripción de una reunión con el cliente y recibe una estimación. "
-    "Arquitectura CAG + wrapper con fallback, cacheo y streaming (sesión 03)."
+st.set_page_config(
+    page_title="Estimador de software",
+    page_icon="📐",
+    layout="wide",
 )
 
-# Historial de la conversación en session_state: Streamlit re-ejecuta el script
-# entero en cada interacción, así que persistimos el chat aquí para que no se pierda.
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+st.title("📐 Estimador de software")
+st.caption(
+    "Rellena el formulario con los datos del proyecto y recibe una estimación "
+    "estructurada generada por IA. Sesión 04 — del chat al producto."
+)
+
+# ── Inicialización del estado de sesión ─────────────────────────────────────
+# Streamlit re-ejecuta el script entero en cada interacción; session_state
+# persiste los datos entre ejecuciones (dentro de la misma sesión de usuario).
+if "estimations" not in st.session_state:
+    st.session_state.estimations = []   # historial simple de estimaciones
 if "last_meta" not in st.session_state:
     st.session_state.last_meta = None
-if "last_eval" not in st.session_state:
-    st.session_state.last_eval = None
 
 
-# ── Nivel 3: panel lateral con el contexto CAG y métricas ───────────────────
+# ── Sidebar: metadatos de la última llamada ──────────────────────────────────
 with st.sidebar:
-    st.header("🔎 Contexto CAG")
-
-    with st.expander("System prompt activo", expanded=False):
-        st.text_area(
-            "system_prompt",
-            value=_build_system_prompt(),
-            height=300,
-            disabled=True,
-            label_visibility="collapsed",
-        )
-
-    with st.expander(f"Ejemplos inyectados ({len(ESTIMATION_EXAMPLES)})", expanded=False):
-        for i, ej in enumerate(ESTIMATION_EXAMPLES, start=1):
-            st.markdown(f"**Ejemplo {i}**")
-            st.caption(ej["meeting_summary"])
-
-    st.divider()
-    st.subheader("📊 Última llamada")
+    st.header("🔎 Observabilidad")
     meta = st.session_state.last_meta
     if meta:
+        st.subheader("Última estimación")
         col1, col2 = st.columns(2)
-        col1.metric("Modelo", meta.get("model", "—"))
+        col1.metric("Modelo", meta.get("model") or "—")
         col2.metric("Latencia", f"{meta.get('latency_ms', 0):.0f} ms")
         col1.metric("Tokens entrada", meta.get("tokens_in", 0))
         col2.metric("Tokens salida", meta.get("tokens_out", 0))
         col1.metric("Coste", f"${meta.get('cost_usd', 0):.6f}")
-        col2.metric("Proveedor", meta.get("provider", "—"))
+        col2.metric("Versión prompt", meta.get("prompt_version", "—"))
         flags = []
         if meta.get("cache_hit"):
             flags.append("⚡ caché")
@@ -80,77 +66,141 @@ with st.sidebar:
             flags.append("🔁 fallback")
         st.caption(" · ".join(flags) if flags else "✅ llamada directa al proveedor primario")
     else:
-        st.caption("Aún no has hecho ninguna estimación.")
+        st.caption("Aún no has generado ninguna estimación.")
 
-    # Calidad estructural de la última estimación (reto: evaluación sin LLM).
-    eval_ = st.session_state.last_eval
-    if eval_:
-        st.divider()
-        st.subheader("✅ Calidad de la estimación")
-        st.metric("Score estructural", f"{eval_.get('score', 0) * 100:.0f}%")
-        if eval_.get("hours_match") is False:
-            st.error(
-                f"Aritmética: suma de tareas {eval_.get('sum_task_hours')} h "
-                f"≠ total declarado {eval_.get('declared_total_hours')} h"
-            )
-        issues = eval_.get("issues") or []
-        if issues:
-            for issue in issues:
-                st.caption(f"• {issue}")
-        else:
-            st.caption("Sin problemas estructurales detectados.")
-
-
-# Avisamos si no hay ninguna API key configurada (causa de error más común).
-settings = get_settings()
-if not (settings.openai_api_key or settings.anthropic_api_key):
-    st.warning(
-        "No hay ninguna API key configurada. Copia `.env.example` a `.env` y rellena "
-        "`OPENAI_API_KEY` o `ANTHROPIC_API_KEY` (o usa `.streamlit/secrets.toml`)."
+    st.divider()
+    st.subheader("⚙️ Configuración")
+    prompt_version = st.selectbox(
+        "Versión del prompt",
+        options=["v1", "v2"],
+        index=0,
+        help="Selecciona la variante del template Jinja2 para comparar resultados.",
     )
 
 
-# ── Niveles 1 y 2: render del historial + chat con streaming ────────────────
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# ── Formulario principal ─────────────────────────────────────────────────────
+with st.form("estimation_form", clear_on_submit=False):
+    st.subheader("Datos del proyecto")
 
-if prompt := st.chat_input("Pega aquí la transcripción de la reunión…"):
-    # 1) Mostrar y guardar el mensaje del usuario.
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    description = st.text_area(
+        "Descripción del proyecto *",
+        placeholder=(
+            "Describe el proyecto con el mayor detalle posible: funcionalidades clave, "
+            "integraciones, usuarios objetivo, restricciones técnicas conocidas..."
+        ),
+        height=160,
+        help="Mínimo 20 caracteres, máximo 2000.",
+    )
 
-    # 2) Generar la estimación en streaming (token a token).
-    with st.chat_message("assistant"):
-        meta: dict = {}
-        # history = todo lo anterior al mensaje recién añadido (stream_estimation
-        # vuelve a añadir 'prompt' como turno de usuario internamente).
-        history = st.session_state.messages[:-1]
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        project_type = st.selectbox(
+            "Tipo de proyecto *",
+            options=["mobile_app", "web_saas", "internal_tool", "data_pipeline"],
+            format_func=lambda x: {
+                "mobile_app": "📱 App móvil",
+                "web_saas": "🌐 Web / SaaS",
+                "internal_tool": "🛠️ Herramienta interna",
+                "data_pipeline": "📊 Pipeline de datos",
+            }[x],
+        )
+
+    with col2:
+        detail_level = st.radio(
+            "Nivel de detalle *",
+            options=["summary", "medium", "detailed"],
+            format_func=lambda x: {
+                "summary": "Resumen",
+                "medium": "Medio",
+                "detailed": "Detallado",
+            }[x],
+            horizontal=False,
+        )
+
+    with col3:
+        output_format = st.selectbox(
+            "Formato de salida *",
+            options=["phases_table", "line_items", "narrative"],
+            format_func=lambda x: {
+                "phases_table": "📋 Tabla de fases",
+                "line_items": "📝 Líneas de trabajo",
+                "narrative": "📖 Narrativa",
+            }[x],
+        )
+
+    submitted = st.form_submit_button("Estimar proyecto", use_container_width=True, type="primary")
+
+
+# ── Procesamiento al enviar el formulario ────────────────────────────────────
+if submitted:
+    # Validación básica en el cliente antes de llamar a la API.
+    if not description or len(description.strip()) < 20:
+        st.error("La descripción es obligatoria y debe tener al menos 20 caracteres.")
+        st.stop()
+
+    payload = {
+        "description": description.strip(),
+        "project_type": project_type,
+        "detail_level": detail_level,
+        "output_format": output_format,
+    }
+
+    with st.spinner("Generando estimación…"):
         try:
-            full_response = st.write_stream(
-                stream_estimation(prompt, history=history, meta=meta)
+            response = httpx.post(
+                f"{API_BASE_URL}/api/v1/estimate",
+                json=payload,
+                params={"prompt_version": prompt_version},
+                timeout=120.0,
             )
-        except ValueError as exc:
-            full_response = f"⚠️ Configuración: {exc}"
-            st.error(full_response)
-        except Exception as exc:  # noqa: BLE001
-            full_response = f"⚠️ Error al llamar al LLM: {exc}"
-            st.error(full_response)
-
-        # Aviso de truncamiento: si el modelo cortó por límite de tokens, una
-        # estimación incompleta es peor que ninguna -> avisamos explícitamente.
-        if meta.get("finish_reason") == "length":
-            st.warning(
-                "⚠️ La estimación se truncó por el límite de tokens "
-                "(`LLM_MAX_TOKENS`). Súbelo para obtener la respuesta completa."
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.json().get("detail", str(exc)) if exc.response else str(exc)
+            st.error(f"Error del servidor ({exc.response.status_code}): {detail}")
+            st.stop()
+        except httpx.RequestError as exc:
+            st.error(
+                f"No se pudo conectar con el backend ({API_BASE_URL}). "
+                f"¿Está el servidor levantado?\n\nDetalle: {exc}"
             )
+            st.stop()
 
-    # 3) Persistir la respuesta, las métricas y la evaluación para el sidebar.
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-    if meta:
-        st.session_state.last_meta = meta
-        st.session_state.last_eval = evaluate_estimation(
-            full_response, meta.get("finish_reason")
-        ).model_dump()
-        st.rerun()  # refresca el sidebar con las métricas de esta llamada
+    # Guardamos metadatos para el sidebar y añadimos al historial.
+    st.session_state.last_meta = {
+        "model": data.get("model"),
+        "latency_ms": data.get("latency_ms", 0),
+        "tokens_in": data.get("tokens_in", 0),
+        "tokens_out": data.get("tokens_out", 0),
+        "cost_usd": data.get("cost_usd", 0),
+        "prompt_version": data.get("prompt_version", prompt_version),
+        "cache_hit": data.get("cache_hit", False),
+        "fallback_used": data.get("fallback_used", False),
+    }
+    st.session_state.estimations.append(
+        {
+            "description": description[:80] + ("…" if len(description) > 80 else ""),
+            "project_type": project_type,
+            "output_format": output_format,
+            "text": data.get("text", ""),
+        }
+    )
+
+    st.success("Estimación generada correctamente.")
+    st.rerun()  # refresca el sidebar con los metadatos de esta llamada
+
+
+# ── Mostrar la última estimación y el historial ──────────────────────────────
+if st.session_state.estimations:
+    last = st.session_state.estimations[-1]
+    st.subheader("Última estimación")
+    st.markdown(last["text"])
+
+    if len(st.session_state.estimations) > 1:
+        with st.expander(f"Historial ({len(st.session_state.estimations)} estimaciones)", expanded=False):
+            for i, est in enumerate(reversed(st.session_state.estimations[:-1]), start=1):
+                st.markdown(f"**#{len(st.session_state.estimations) - i}** — {est['description']}")
+                st.caption(f"Tipo: {est['project_type']} | Formato: {est['output_format']}")
+                st.markdown(est["text"])
+                st.divider()

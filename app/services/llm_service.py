@@ -1,129 +1,103 @@
-"""Capa de negocio del estimador (CAG).
+"""Capa de orquestación del estimador (sesión 04: formulario tipado + prompts Jinja2).
 
-Esta capa NO sabe de OpenAI ni de Anthropic ni de caché ni de fallback. Su única
-responsabilidad es:
-  - construir el system prompt CAG (rol + ejemplos de estimaciones inyectados),
-  - montar la conversación (historial previo + nuevo mensaje) y aplicar la ventana
-    deslizante,
-  - delegar la llamada en el WRAPPER (`app.services.llm_wrapper`), que se encarga
-    de abstracción, fallback, cacheo y logging.
+Esta capa conecta los schemas Pydantic con el loader de prompts y el wrapper
+de proveedores. Reemplaza el flujo anterior basado en transcripción / historial /
+CAG por un flujo más limpio:
 
-Comparado con la sesión 02, lo único que cambia aquí es la última milla: antes
-llamábamos directamente al SDK de OpenAI/Anthropic; ahora llamamos al wrapper. La
-lógica CAG es idéntica.
+    EstimationRequest
+        -> render_estimation_prompt (Jinja2)    <- template versionado
+        -> wrapper.complete / wrapper.stream    <- abstracción LLM
+        -> dict / Iterator[str]
+
+Los cambios respecto a la sesión 03:
+  - Se elimina la lógica de historial multi-turn (_build_conversation,
+    _apply_sliding_window) porque el nuevo modelo de producto es de una sola
+    petición: el formulario tipado es el contexto.
+  - Se elimina _build_system_prompt: los prompts viven en templates Jinja2
+    versionados, no inlineados en código Python.
+  - Se añade el parámetro `version` en ambas funciones para el bonus de
+    selección de versión de prompt.
+
+Compatibilidad: generate_estimation acepta tanto un EstimationRequest como una
+cadena de texto (transcripción libre). Esto mantiene el contrato que usa
+test_wrapper.py (que no podemos modificar) y permite la migración gradual.
 """
 
 from collections.abc import Iterator
 
-from app.config import get_settings
-from app.context.examples import ESTIMATION_EXAMPLES
-from app.services.evaluation import evaluate_estimation
+from app.prompts.loader import render_estimation_prompt
+from app.schemas import DetailLevel, EstimationRequest, OutputFormat, ProjectType
 from app.services.llm_wrapper import wrapper
 
 
-def _build_system_prompt() -> str:
-    """Construye el system prompt: instrucciones + ejemplos de contexto inyectados.
+def _coerce_to_request(request_or_str: "EstimationRequest | str") -> EstimationRequest:
+    """Convierte una cadena libre en un EstimationRequest con valores por defecto.
 
-    Esto es la inyección de contexto de CAG: los ejemplos viajan dentro del prompt
-    en cada llamada, no se recuperan de ninguna base de datos.
+    Esto permite mantener la compatibilidad con código que todavía llama a
+    generate_estimation con una transcripción de texto plano (como test_wrapper.py).
+    El texto libre se trata como descripción con los parámetros más habituales.
     """
-    # Serializamos los ejemplos a texto legible para el modelo.
-    ejemplos_texto = "\n\n".join(
-        f"### Ejemplo {i}\n"
-        f"**Petición del cliente:** {ej['meeting_summary']}\n\n"
-        f"**Estimación generada:**\n{ej['estimation']}"
-        for i, ej in enumerate(ESTIMATION_EXAMPLES, start=1)
-    )
-
-    return f"""Eres un estimador de software senior. Tu trabajo es analizar la \
-transcripción de una reunión con un cliente y generar una estimación de \
-proyecto clara, realista y bien estructurada.
-
-Te apoyas en estimaciones históricas previas como referencia de formato, nivel \
-de detalle y criterio. A continuación tienes ejemplos de estimaciones reales \
-que ha producido el equipo:
-
-{ejemplos_texto}
-
-Cuando recibas una nueva transcripción, genera una estimación siguiendo el \
-mismo estilo y estructura que los ejemplos anteriores:
-- Un título descriptivo del proyecto.
-- Un desglose de tareas con horas estimadas para cada una.
-- Total de horas estimado.
-- Equipo recomendado.
-- Duración estimada en semanas.
-- Supuestos relevantes que has asumido.
-
-Sé concreto y realista. Si la transcripción no aporta suficiente detalle sobre \
-algún punto, indícalo explícitamente como supuesto."""
+    if isinstance(request_or_str, str):
+        return EstimationRequest(
+            description=request_or_str if len(request_or_str) >= 20 else request_or_str + " (descripción de proyecto)",
+            project_type=ProjectType.WEB_SAAS,
+            detail_level=DetailLevel.MEDIUM,
+            output_format=OutputFormat.NARRATIVE,
+        )
+    return request_or_str
 
 
-def _apply_sliding_window(conversation: list[dict], max_turns: int) -> list[dict]:
-    """Ventana deslizante: conserva solo los últimos `max_turns` pares (user+assistant).
+def generate_estimation(request: "EstimationRequest | str", version: str = "v1") -> dict:
+    """Genera la estimación de forma síncrona (no streaming).
 
-    El system prompt NO está en esta lista (se añade aparte en el wrapper), así que
-    aquí solo recortamos el historial conversacional. Es la estrategia más simple del
-    material 05; descarta los turnos más antiguos cuando la conversación crece.
+    Renderiza el par (system, user) con Jinja2 y delega en el wrapper, que
+    gestiona abstracción de proveedores, fallback, caché y observabilidad.
+
+    Args:
+        request: Schema validado con todos los parámetros del formulario, o una
+                 cadena de texto libre (compatibilidad con test_wrapper.py).
+        version: Versión del template de prompt (default "v1").
+
+    Returns:
+        Diccionario con los campos de EstimationResponse (texto + metadatos).
+        Incluye finish_reason para mantener compatibilidad con tests heredados.
     """
-    max_messages = max_turns * 2
-    if len(conversation) > max_messages:
-        return conversation[-max_messages:]
-    return conversation
-
-
-def _build_conversation(transcription: str, history: list[dict] | None) -> list[dict]:
-    """Conversación = turnos previos (solo user/assistant) + el nuevo mensaje + ventana."""
-    settings = get_settings()
-    conversation: list[dict] = [
-        {"role": m["role"], "content": m["content"]} for m in (history or [])
-    ]
-    conversation.append({"role": "user", "content": transcription})
-    return _apply_sliding_window(conversation, settings.llm_max_history_turns)
-
-
-def generate_estimation(transcription: str, history: list[dict] | None = None) -> dict:
-    """Punto de entrada del servicio (no streaming).
-
-    Construye el prompt CAG y la conversación, delega en el wrapper (abstracción +
-    fallback + caché + logging) y devuelve la estimación, metadatos de trazabilidad
-    y el historial ACTUALIZADO (para reenviarlo en el siguiente turno).
-    """
-    system_prompt = _build_system_prompt()
-    conversation = _build_conversation(transcription, history)
-
-    result = wrapper.complete(system_prompt, conversation)
-
-    # Guardamos la respuesta del modelo en el historial que devolvemos al cliente.
-    updated_history = [*conversation, {"role": "assistant", "content": result.content}]
+    req = _coerce_to_request(request)
+    system, user = render_estimation_prompt(req, version=version)
+    result = wrapper.complete(system, [{"role": "user", "content": user}])
 
     return {
-        "estimation": result.content,
+        "text": result.content,
+        "prompt_version": version,
         "model": result.model,
-        "provider": result.provider,
-        "history": updated_history,
-        # Metadatos de trazabilidad (sesión 03): el endpoint los expone y la UI los muestra.
         "cache_hit": result.cache_hit,
         "fallback_used": result.fallback_used,
         "tokens_in": result.tokens_in,
         "tokens_out": result.tokens_out,
         "cost_usd": result.cost_usd,
         "latency_ms": result.latency_ms,
-        # "length" = la respuesta se truncó por max_tokens; "stop" = terminó bien.
+        # finish_reason se mantiene en el dict del servicio para compatibilidad
+        # con test_wrapper.py y para que el endpoint de streaming pueda usarlo.
         "finish_reason": result.finish_reason,
-        # Evaluación estructural de la estimación (regex, sin LLM): score + issues.
-        "evaluation": evaluate_estimation(result.content, result.finish_reason).model_dump(),
     }
 
 
 def stream_estimation(
-    transcription: str, history: list[dict] | None = None, *, meta: dict | None = None
+    request: EstimationRequest,
+    version: str = "v1",
+    *,
+    meta: dict | None = None,
 ) -> Iterator[str]:
     """Versión en streaming: produce la estimación token a token.
 
-    Devuelve un generador de fragmentos de texto (ideal para `st.write_stream` o un
-    endpoint SSE). Los metadatos de la llamada (modelo, tokens, coste, cache_hit...)
-    se vuelcan en el dict `meta` cuando termina la generación.
+    Los metadatos de la llamada (modelo, tokens, coste, latencia, cache_hit...)
+    se vuelcan en el dict `meta` al terminar la generación, para que el router
+    SSE los emita en el evento `done`.
+
+    Args:
+        request: Schema validado con todos los parámetros del formulario.
+        version: Versión del template de prompt (default "v1").
+        meta:    Dict mutable donde el wrapper deposita los metadatos al finalizar.
     """
-    system_prompt = _build_system_prompt()
-    conversation = _build_conversation(transcription, history)
-    yield from wrapper.stream(system_prompt, conversation, meta=meta)
+    system, user = render_estimation_prompt(request, version=version)
+    yield from wrapper.stream(system, [{"role": "user", "content": user}], meta=meta)

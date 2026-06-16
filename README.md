@@ -9,6 +9,18 @@
 > Para revisar lo entregado en una sesión concreta: `git checkout entrega-sesion-NN`.
 > El historial previo (Sesión 2 — scaffolding) vive en su propio repo `01-scaffolding-proyecto-fast-api`.
 
+> 🆕 **Sesión 04 — del chat a interfaz de producto (rama `pre-session-04`).** El estimador deja
+> de ser un chat: el cliente Streamlit es ahora un **formulario tipado** (`EstimationRequest`) que
+> hace `POST /api/v1/estimate`, y el prompt vive en **templates Jinja2 versionados**
+> (`app/prompts/estimation/v1·v2/`) cargados por `app/prompts/loader.py`. El endpoint acepta
+> `?prompt_version=`. Cómo se ejecuta y se aprende: [`tutorial_aprendizaje/sesion-04/`](tutorial_aprendizaje/sesion-04/README.md).
+> **Entrega:** rama `pre-session-04` por email a `george@lidr.co` (≥2 días antes del directo).
+>
+> ```bash
+> uv run uvicorn app.main:app --reload      # API  → http://localhost:8000/docs
+> uv run streamlit run streamlit_app.py     # formulario → http://localhost:8501
+> ```
+
 De **prototipo** a **producto**. Partiendo del endpoint CAG de la sesión 02 (un
 servicio FastAPI que convierte transcripciones de reunión en estimaciones de
 software), esta sesión añade las capas que separan un script de demo de un sistema
