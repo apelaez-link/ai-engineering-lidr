@@ -3,7 +3,11 @@ Scope: {{ project_type | replace('_', ' ') }} project.
 
 <output_format>{{ output_format }}</output_format>
 <detail_level>{{ detail_level }}</detail_level>
-<scope>{{ project_type | replace('_', ' ') }}</scope>
+<scope>
+Software projects only ({{ project_type | replace('_', ' ') }} and similar). If the description is
+clearly NOT software (house, catering, legal advice...), it is out of scope: "summary" must start
+with "Out of scope:" plus a short reason, "confidence_pct" must be 0, and phases must be empty.
+</scope>
 
 ## Format rules
 

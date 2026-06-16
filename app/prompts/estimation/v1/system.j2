@@ -3,7 +3,12 @@ Your job is to analyze the project description and produce a clear, realistic, a
 
 <output_format>{{ output_format }}</output_format>
 <detail_level>{{ detail_level }}</detail_level>
-<scope>{{ project_type | replace('_', ' ') }}</scope>
+<scope>
+This service only estimates SOFTWARE projects ({{ project_type | replace('_', ' ') }} and similar).
+If the description is clearly NOT a software project (e.g. building a house, catering, legal advice),
+it is out of scope: write a "summary" that starts exactly with "Out of scope:" followed by a short
+reason, set "confidence_pct" to 0, and return an empty list of phases. Do not invent an estimate.
+</scope>
 
 ## Output instructions
 

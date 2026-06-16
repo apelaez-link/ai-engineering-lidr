@@ -67,6 +67,19 @@ class Settings(BaseSettings):
     # URL de Redis (solo si cache_backend="redis").
     redis_url: str = "redis://localhost:6379/0"
 
+    # ── Cacheo SEMÁNTICO (sesión 04) ────────────────────────────────────────
+    # A diferencia del exact-match, el cacheo semántico captura reformulaciones:
+    # dos descripciones distintas con la MISMA intención comparten respuesta.
+    # Embebe la descripción y busca por similitud coseno dentro de un "bucket"
+    # determinista (mismos parámetros). Store en memoria por defecto (sin infra);
+    # en producción se usaría redisvl/Redis como backend vectorial.
+    semantic_cache_enabled: bool = True
+    # Modelo de embeddings (configurable). Default económico de OpenAI.
+    semantic_cache_embedding_model: str = "text-embedding-3-small"
+    # Umbral de similitud coseno para considerar HIT (0-1). 0.92 es conservador:
+    # exige descripciones muy parecidas semánticamente para reutilizar respuesta.
+    semantic_cache_threshold: float = 0.92
+
     # ── Observabilidad / logging (sesión 03) ───────────────────────────────
     # "development" -> logs de consola legibles y coloreados.
     # "production"  -> logs en JSON, listos para Elasticsearch/Loki/CloudWatch.

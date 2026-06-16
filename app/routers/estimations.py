@@ -17,8 +17,17 @@ import json
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from app.schemas import EstimationRequest, EstimationResponse
+from app.cache.semantic import get_semantic_cache, make_bucket
+from app.config import get_settings
+from app.guardrails import InputModerationError, validate_input, validate_output
+from app.schemas import (
+    EstimationRequest,
+    EstimationResponse,
+    EstimationResponseStructured,
+    EstimationResult,
+)
 from app.services.llm_service import generate_estimation, stream_estimation
+from app.services.structured import generate_structured_estimation
 
 # El prefijo /api/v1 lo añade main.py al incluir este router.
 router = APIRouter(tags=["estimations"])
@@ -81,3 +90,81 @@ def estimate_stream(
         yield f"event: done\ndata: {json.dumps(meta, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
+
+
+@router.post("/estimate/structured", response_model=EstimationResponseStructured)
+def estimate_structured(
+    request: EstimationRequest,
+    prompt_version: str = Query(default="v1", description="Versión del template de prompt (v1, v2...)."),
+) -> EstimationResponseStructured:
+    """Devuelve la estimación como JSON ESTRUCTURADO y validado (sesión 04).
+
+    Integra los tres temas del directo con el ORDEN del pipeline que enseña la
+    lección de cacheo semántico:
+
+      1. GUARDRAILS DE ENTRADA (validate_input) — PRIMERO de todo. Moderación +
+         anti prompt-injection. Si no pasa, ni siquiera consultamos la caché ni
+         llamamos al LLM (política EXCEPTION -> HTTP 400). Validar antes de cachear
+         evita envenenar la caché con entradas maliciosas.
+
+      2. CACHE LOOKUP (semántico) — buscamos una respuesta equivalente ya generada
+         en el mismo bucket. Si HIT, devolvemos con cached=True sin tocar el LLM.
+
+      3. GENERACIÓN + GUARDRAILS DE SALIDA — solo si MISS. Instructor genera el
+         EstimationResult tipado; validate_output aplica la regla semántica de
+         baja confianza (política FIX/RETRY).
+
+      4. CACHE WRITE — SOLO tras validar la salida. Nunca cacheamos algo que no
+         haya pasado los guardrails.
+    """
+    settings = get_settings()
+
+    # 1) GUARDRAILS DE ENTRADA (antes de componer el prompt o tocar la caché).
+    try:
+        validate_input(request.description)
+    except InputModerationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Bucket determinista para el cacheo semántico (parte "exacta" de la clave).
+    bucket = make_bucket(
+        project_type=request.project_type.value,
+        detail_level=request.detail_level.value,
+        output_format=request.output_format.value,
+        prompt_version=prompt_version,
+    )
+    cache = get_semantic_cache()
+
+    # 2) CACHE LOOKUP semántico.
+    if settings.semantic_cache_enabled:
+        try:
+            hit = cache.lookup(request.description, bucket)
+        except Exception:  # noqa: BLE001 — fallo de embeddings no debe tumbar la petición
+            hit = None
+        if hit is not None:
+            result = EstimationResult.model_validate_json(hit)
+            return EstimationResponseStructured(
+                result=result, prompt_version=prompt_version, cached=True
+            )
+
+    # 3) MISS -> generación estructurada + guardrail de salida.
+    try:
+        result = generate_structured_estimation(request, version=prompt_version)
+    except ValueError as exc:
+        # Error de configuración (falta API key, etc.) -> 400.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Error al llamar al LLM: {exc}") from exc
+
+    # Guardrail de salida (regla semántica de baja confianza).
+    result = validate_output(result)
+
+    # 4) CACHE WRITE — solo después de validar la salida.
+    if settings.semantic_cache_enabled:
+        try:
+            cache.write(request.description, bucket, result.model_dump_json())
+        except Exception:  # noqa: BLE001 — un fallo al cachear no debe romper la respuesta
+            pass
+
+    return EstimationResponseStructured(
+        result=result, prompt_version=prompt_version, cached=False
+    )

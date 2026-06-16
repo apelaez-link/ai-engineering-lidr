@@ -28,6 +28,13 @@ dependencies = [
     "jinja2>=3.1.0",
     # Cliente HTTP para el Streamlit de sesión 04 (llama a la API en lugar de importar el código).
     "httpx>=0.27.0",
+    # Salida JSON estructurada (sesión 04, lección "Extracción de datos estructurados").
+    # Instructor envuelve litellm y fuerza al LLM a devolver un objeto Pydantic
+    # validado (con reintentos automáticos si la validación falla).
+    "instructor>=1.5.0",
+    # Cacheo semántico (sesión 04, lección "Cacheo semántico de respuestas").
+    # numpy se usa para la similitud coseno entre embeddings.
+    "numpy>=1.26.0",
 ]
 
 [dependency-groups]

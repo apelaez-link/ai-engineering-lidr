@@ -24,6 +24,7 @@ os.environ.setdefault("LOG_LEVEL", "WARNING")
 
 # Se importan DESPUÉS de fijar el entorno (por eso el noqa: E402).
 from app.cache import get_cache  # noqa: E402
+from app.cache.semantic import get_semantic_cache  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -32,15 +33,17 @@ from app.main import app  # noqa: E402
 def clear_caches():
     """Limpia las cachés de proceso antes y después de cada test.
 
-    get_settings y get_cache están cacheadas con @lru_cache. Si un test cambia la
-    config o llena la caché de respuestas, queremos que el siguiente empiece limpio.
-    autouse=True la aplica a todos los tests.
+    get_settings, get_cache y get_semantic_cache están cacheadas con @lru_cache.
+    Si un test cambia la config o llena alguna caché de respuestas, queremos que
+    el siguiente empiece limpio. autouse=True la aplica a todos los tests.
     """
     get_settings.cache_clear()
     get_cache.cache_clear()
+    get_semantic_cache.cache_clear()
     yield
     get_settings.cache_clear()
     get_cache.cache_clear()
+    get_semantic_cache.cache_clear()
 
 
 @pytest.fixture
