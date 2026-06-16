@@ -1,113 +1,116 @@
-"""Tests del endpoint POST /api/v1/estimate.
+"""Tests del endpoint POST /api/v1/estimate (sesión 04).
 
-Idea clave: NO llamamos al LLM real. Con unittest.mock.patch sustituimos
-generate_estimation por una versión falsa que devuelve lo que queramos.
-Así los tests son gratis, rápidos, deterministas y funcionan en CI sin API key.
+El contrato del endpoint cambió: ya no acepta 'transcription' + 'history', sino
+un formulario tipado (description, project_type, detail_level, output_format).
 
-Ojo al objetivo del patch: parcheamos 'app.routers.estimations.generate_estimation'
-(donde se USA), no donde se define. El router hizo `from ...llm_service import
-generate_estimation`, así que esa es la referencia que debemos reemplazar.
+Seguimos sin llamar a ningún LLM real: mockeamos litellm.completion a través del
+wrapper para que los tests sean rápidos, deterministas y funcionen en CI sin API key.
+
+Estrategia de mock: parcheamos 'app.services.llm_wrapper.litellm.completion'
+(donde LiteLLM se llama realmente) en lugar de parcheamos el servicio de alto nivel,
+de forma que también se ejercita la lógica del wrapper (caché, construcción de
+mensajes, etc.) sin hacer llamadas de red.
 """
 
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+# Payload mínimo válido para todos los tests que necesiten una petición correcta.
+VALID_PAYLOAD = {
+    "description": "A SaaS platform for managing restaurant reservations with online payments.",
+    "project_type": "web_saas",
+    "detail_level": "medium",
+    "output_format": "phases_table",
+}
 
-@patch("app.routers.estimations.generate_estimation")
-def test_estimate_returns_estimation(mock_generate, client: TestClient) -> None:
-    # Preparamos la respuesta falsa del servicio (ahora incluye 'history').
-    mock_generate.return_value = {
-        "estimation": "## Estimación de prueba\n\n**Total: 40 horas**",
-        "model": "gpt-4o-mini",
-        "provider": "openai",
-        "history": [
-            {"role": "user", "content": "El cliente quiere una landing."},
-            {"role": "assistant", "content": "## Estimación de prueba\n\n**Total: 40 horas**"},
-        ],
-    }
 
-    response = client.post(
-        "/api/v1/estimate",
-        json={"transcription": "El cliente quiere una landing con formulario y blog."},
+def _fake_completion(*args, **kwargs):
+    """Simula una respuesta de litellm.completion con el contenido mínimo esperado."""
+    usage = SimpleNamespace(prompt_tokens=50, completion_tokens=80)
+    choice = SimpleNamespace(
+        message=SimpleNamespace(content="| phase | duration_weeks | cost_eur | confidence_pct |\n|---|---|---|---|\n| Backend | 4 | 25600 | 85 |"),
+        finish_reason="stop",
     )
+    response = MagicMock()
+    response.choices = [choice]
+    response.usage = usage
+    return response
+
+
+@patch("app.services.llm_wrapper.litellm.completion", side_effect=_fake_completion)
+def test_estimate_returns_text_and_prompt_version(mock_completion, client: TestClient) -> None:
+    """El endpoint debe devolver 'text' y 'prompt_version' con status 200."""
+    response = client.post("/api/v1/estimate", json=VALID_PAYLOAD)
 
     assert response.status_code == 200
     data = response.json()
-    assert data["estimation"].startswith("## Estimación")
-    assert data["model"] == "gpt-4o-mini"
-    assert data["provider"] == "openai"
-    # El response devuelve el historial para continuar la conversación.
-    assert len(data["history"]) == 2
-    mock_generate.assert_called_once()
+    assert "text" in data
+    assert "prompt_version" in data
+    assert data["prompt_version"] == "v1"  # versión por defecto
+    assert len(data["text"]) > 0
+    mock_completion.assert_called_once()
 
 
-@patch("app.routers.estimations.generate_estimation")
-def test_estimate_accepts_history(mock_generate, client: TestClient) -> None:
-    # Multi-turn: el cliente reenvía el historial previo en la siguiente petición.
-    mock_generate.return_value = {
-        "estimation": "## Estimación actualizada",
-        "model": "gpt-4o-mini",
-        "provider": "openai",
-        "history": [],
-    }
-
-    response = client.post(
-        "/api/v1/estimate",
-        json={
-            "transcription": "Sube las horas de diseño a 60.",
-            "history": [
-                {"role": "user", "content": "Estima una landing."},
-                {"role": "assistant", "content": "## Estimación: 40h de diseño..."},
-            ],
-        },
-    )
+@patch("app.services.llm_wrapper.litellm.completion", side_effect=_fake_completion)
+def test_estimate_custom_prompt_version(mock_completion, client: TestClient) -> None:
+    """El query param prompt_version debe pasarse a la respuesta."""
+    response = client.post("/api/v1/estimate?prompt_version=v2", json=VALID_PAYLOAD)
 
     assert response.status_code == 200
-    # El router debe pasar el historial al servicio (como argumento 'history').
-    _, kwargs = mock_generate.call_args
-    assert kwargs["history"] is not None
-    assert len(kwargs["history"]) == 2
-    assert kwargs["history"][0]["role"] == "user"
+    data = response.json()
+    assert data["prompt_version"] == "v2"
 
 
-def test_estimate_rejects_invalid_role(client: TestClient) -> None:
-    # 'role' solo admite user/assistant -> un rol inválido da 422 (validación Pydantic).
-    response = client.post(
-        "/api/v1/estimate",
-        json={
-            "transcription": "Continúa.",
-            "history": [{"role": "system", "content": "no permitido aquí"}],
-        },
-    )
+@patch("app.services.llm_wrapper.litellm.completion", side_effect=_fake_completion)
+def test_estimate_returns_observability_metadata(mock_completion, client: TestClient) -> None:
+    """La respuesta debe incluir los campos de observabilidad heredados del wrapper."""
+    response = client.post("/api/v1/estimate", json=VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    data = response.json()
+    # Campos de observabilidad definidos en EstimationResponse.
+    assert "model" in data
+    assert "cache_hit" in data
+    assert "tokens_in" in data
+    assert "tokens_out" in data
+    assert "cost_usd" in data
+    assert "latency_ms" in data
+
+
+def test_estimate_rejects_short_description(client: TestClient) -> None:
+    """Una description con menos de 20 caracteres debe devolver 422 (validación Pydantic)."""
+    payload = {**VALID_PAYLOAD, "description": "too short"}
+    response = client.post("/api/v1/estimate", json=payload)
     assert response.status_code == 422
 
 
-def test_estimate_rejects_empty_transcription(client: TestClient) -> None:
-    # Sin 'transcription' -> Pydantic devuelve 422 sin tocar el servicio.
-    response = client.post("/api/v1/estimate", json={})
+def test_estimate_rejects_missing_project_type(client: TestClient) -> None:
+    """Sin project_type el body es inválido -> 422."""
+    payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "project_type"}
+    response = client.post("/api/v1/estimate", json=payload)
+    assert response.status_code == 422
+
+
+def test_estimate_rejects_invalid_project_type(client: TestClient) -> None:
+    """Un project_type que no existe en el Enum debe devolver 422."""
+    payload = {**VALID_PAYLOAD, "project_type": "alien_spaceship"}
+    response = client.post("/api/v1/estimate", json=payload)
     assert response.status_code == 422
 
 
 @patch("app.routers.estimations.generate_estimation")
 def test_estimate_config_error_returns_400(mock_generate, client: TestClient) -> None:
-    # Si el servicio lanza ValueError (p. ej. falta API key) -> 400.
-    mock_generate.side_effect = ValueError("Falta OPENAI_API_KEY en el .env")
-
-    response = client.post(
-        "/api/v1/estimate",
-        json={"transcription": "Una transcripción cualquiera."},
-    )
+    """Si el servicio lanza ValueError (falta API key, etc.) -> 400."""
+    mock_generate.side_effect = ValueError("No API key configured")
+    response = client.post("/api/v1/estimate", json=VALID_PAYLOAD)
     assert response.status_code == 400
 
 
 @patch("app.routers.estimations.generate_estimation")
 def test_estimate_provider_error_returns_502(mock_generate, client: TestClient) -> None:
-    # Si el proveedor falla (red, cuota, etc.) -> 502.
-    mock_generate.side_effect = RuntimeError("API caída")
-
-    response = client.post(
-        "/api/v1/estimate",
-        json={"transcription": "Una transcripción cualquiera."},
-    )
+    """Si el proveedor falla (red, cuota, etc.) -> 502."""
+    mock_generate.side_effect = RuntimeError("Provider unreachable")
+    response = client.post("/api/v1/estimate", json=VALID_PAYLOAD)
     assert response.status_code == 502

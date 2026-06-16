@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Valida que exista la estructura de carpetas y archivos esperada del proyecto.
+"""Valida que exista la estructura de carpetas y archivos esperada del proyecto (sesión 04).
 
 Pensado para ejecutarse en local o en el pipeline de CI ANTES de los tests:
 si falta alguna pieza del scaffold, falla con código de salida 1 y lista qué falta.
@@ -18,6 +18,7 @@ REQUIRED_PATHS = [
     "app/main.py",
     "app/config.py",
     "app/logging_config.py",
+    "app/schemas.py",
     "app/routers/__init__.py",
     "app/routers/estimations.py",
     "app/services/__init__.py",
@@ -26,8 +27,14 @@ REQUIRED_PATHS = [
     "app/services/evaluation.py",
     "app/cache/__init__.py",
     "app/cache/llm_cache.py",
-    "app/context/__init__.py",
-    "app/context/examples.py",
+    "app/prompts/__init__.py",
+    "app/prompts/loader.py",
+    "app/prompts/estimation/v1/system.j2",
+    "app/prompts/estimation/v1/user.j2",
+    "app/prompts/estimation/v1/examples.j2",
+    "app/prompts/estimation/v2/system.j2",
+    "app/prompts/estimation/v2/user.j2",
+    "app/prompts/estimation/v2/examples.j2",
     "app/static/sse_demo.html",
     "streamlit_app.py",
     "docker-compose.yml",
@@ -39,6 +46,8 @@ REQUIRED_PATHS = [
     "tests/test_cache.py",
     "tests/test_evaluation.py",
     "tests/test_estimate_stream.py",
+    "tests/prompts/__init__.py",
+    "tests/prompts/test_estimation_v1.py",
     ".env.example",
     ".gitignore",
     "pyproject.toml",

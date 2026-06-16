@@ -1,97 +1,41 @@
-"""Router de estimaciones: capa HTTP.
+"""Router de estimaciones: capa HTTP (sesión 04).
 
-Define los endpoints y los schemas (contratos) Pydantic. El router NO contiene
-lógica de negocio: valida la petición, delega en el servicio y devuelve la respuesta.
+Recibe peticiones tipadas (EstimationRequest), delega en el servicio de
+orquestación y devuelve EstimationResponse con los metadatos de observabilidad.
 
-En la sesión 03 añadimos:
-  - metadatos de trazabilidad en la respuesta de /estimate (modelo, tokens, coste,
-    latencia, cache_hit, fallback_used),
-  - un endpoint /estimate/stream que devuelve la estimación en STREAMING vía SSE
-    (Server-Sent Events), para clientes que no sean Streamlit.
+Cambios respecto a la sesión 03:
+  - Los schemas se importan desde app.schemas (ya no se definen inline).
+  - El endpoint /estimate acepta el nuevo schema con project_type, detail_level
+    y output_format en lugar de transcripción + historial.
+  - Se añade el query param opcional `prompt_version` (bonus) para seleccionar
+    la versión del template Jinja2 en tiempo de petición.
+  - /estimate/stream se adapta al nuevo schema de request.
 """
 
 import json
-from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 
-from app.services.evaluation import EstimationEvaluation
+from app.schemas import EstimationRequest, EstimationResponse
 from app.services.llm_service import generate_estimation, stream_estimation
 
-# El prefijo /api/v1 se lo pone main.py al incluir este router.
+# El prefijo /api/v1 lo añade main.py al incluir este router.
 router = APIRouter(tags=["estimations"])
 
 
-class Message(BaseModel):
-    """Un turno de la conversación. 'role' solo puede ser user o assistant.
-
-    El system prompt NO viaja aquí: lo construye el servicio en cada llamada con el
-    contexto CAG. Aquí solo van los turnos visibles de la conversación.
-    """
-
-    role: Literal["user", "assistant"]
-    content: str = Field(..., min_length=1)
-
-
-class EstimationRequest(BaseModel):
-    """Cuerpo de la petición. Pydantic valida que 'transcription' venga y no esté vacío."""
-
-    transcription: str = Field(
-        ...,
-        min_length=1,
-        description="Texto de la transcripción de la reunión, o el siguiente mensaje del usuario.",
-        examples=[
-            "En la reunión con el equipo de marketing, el cliente explicó que "
-            "necesita una landing page con formulario de contacto e integración con HubSpot."
-        ],
-    )
-    history: list[Message] | None = Field(
-        default=None,
-        description=(
-            "Turnos previos (user/assistant) para continuar una conversación. "
-            "Omítelo en la primera llamada; en las siguientes, reenvía el 'history' "
-            "que devolvió la respuesta anterior."
-        ),
-    )
-
-
-class EstimationResponse(BaseModel):
-    """Forma de la respuesta. Documenta el contrato de salida en Swagger."""
-
-    estimation: str = Field(..., description="Estimación generada por el LLM (Markdown).")
-    model: str = Field(..., description="Modelo concreto usado, p. ej. gpt-4o-mini.")
-    provider: str = Field(..., description="Proveedor que respondió: openai o anthropic.")
-    history: list[Message] = Field(
-        ...,
-        description="Historial actualizado (incluye este turno). Reenvíalo en la siguiente petición.",
-    )
-    # ── Metadatos de trazabilidad (sesión 03) ──────────────────────────────
-    cache_hit: bool = Field(default=False, description="True si la respuesta vino de caché.")
-    fallback_used: bool = Field(
-        default=False, description="True si respondió un proveedor de fallback, no el primario."
-    )
-    tokens_in: int = Field(default=0, description="Tokens de entrada (prompt).")
-    tokens_out: int = Field(default=0, description="Tokens de salida (respuesta).")
-    cost_usd: float = Field(default=0.0, description="Coste estimado de la llamada en USD.")
-    latency_ms: float = Field(default=0.0, description="Latencia de la llamada en milisegundos.")
-    finish_reason: str | None = Field(
-        default=None,
-        description="Motivo de fin: 'stop' (terminó) o 'length' (se truncó por max_tokens).",
-    )
-    evaluation: EstimationEvaluation | None = Field(
-        default=None,
-        description="Evaluación estructural de la estimación (score 0-1 + issues detectados).",
-    )
-
-
 @router.post("/estimate", response_model=EstimationResponse)
-def estimate(request: EstimationRequest) -> EstimationResponse:
-    """Recibe una transcripción (y, opcionalmente, el historial) y devuelve la estimación."""
-    history = [m.model_dump() for m in request.history] if request.history else None
+def estimate(
+    request: EstimationRequest,
+    prompt_version: str = Query(default="v1", description="Versión del template de prompt (v1, v2...)."),
+) -> EstimationResponse:
+    """Recibe un formulario tipado y devuelve la estimación generada por el LLM.
+
+    El campo `prompt_version` permite seleccionar la versión del template Jinja2
+    sin modificar código (útil para A/B testing o comparación de variantes).
+    """
     try:
-        result = generate_estimation(request.transcription, history=history)
+        result = generate_estimation(request, version=prompt_version)
     except ValueError as exc:
         # Errores de configuración (p. ej. falta la API key) -> 400.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -103,7 +47,10 @@ def estimate(request: EstimationRequest) -> EstimationResponse:
 
 
 @router.post("/estimate/stream")
-def estimate_stream(request: EstimationRequest) -> StreamingResponse:
+def estimate_stream(
+    request: EstimationRequest,
+    prompt_version: str = Query(default="v1", description="Versión del template de prompt."),
+) -> StreamingResponse:
     """Igual que /estimate, pero devuelve la estimación en STREAMING vía SSE.
 
     Protocolo (Server-Sent Events, media_type text/event-stream):
@@ -115,12 +62,10 @@ def estimate_stream(request: EstimationRequest) -> StreamingResponse:
     del Markdown no rompan el framing de SSE (cada evento SSE termina en línea en blanco).
     El cliente debe hacer JSON.parse de event.data.
     """
-    history = [m.model_dump() for m in request.history] if request.history else None
-
     def event_source():
         meta: dict = {}
         try:
-            for chunk in stream_estimation(request.transcription, history=history, meta=meta):
+            for chunk in stream_estimation(request, version=prompt_version, meta=meta):
                 yield f"event: token\ndata: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
         except ValueError as exc:
             yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
@@ -129,9 +74,10 @@ def estimate_stream(request: EstimationRequest) -> StreamingResponse:
             yield f"event: error\ndata: {json.dumps({'detail': f'Error al llamar al LLM: {exc}'})}\n\n"
             return
         # Evento final con los metadatos de trazabilidad (sin el contenido completo,
-        # que ya se envió token a token).
+        # que ya se envió token a token). Añadimos la versión del prompt.
         meta.pop("content", None)
         meta.pop("providers_tried", None)
+        meta["prompt_version"] = prompt_version
         yield f"event: done\ndata: {json.dumps(meta, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
