@@ -27,23 +27,27 @@ from app.cache import get_cache  # noqa: E402
 from app.cache.semantic import get_semantic_cache  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.main import app  # noqa: E402
+from app.sessions.store import get_store  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def clear_caches():
     """Limpia las cachés de proceso antes y después de cada test.
 
-    get_settings, get_cache y get_semantic_cache están cacheadas con @lru_cache.
-    Si un test cambia la config o llena alguna caché de respuestas, queremos que
-    el siguiente empiece limpio. autouse=True la aplica a todos los tests.
+    get_settings, get_cache, get_semantic_cache y get_store están cacheadas con
+    @lru_cache. Si un test cambia la config, llena una caché de respuestas o crea
+    sesiones conversacionales, queremos que el siguiente empiece limpio. autouse=True
+    la aplica a todos los tests.
     """
     get_settings.cache_clear()
     get_cache.cache_clear()
     get_semantic_cache.cache_clear()
+    get_store.cache_clear()
     yield
     get_settings.cache_clear()
     get_cache.cache_clear()
     get_semantic_cache.cache_clear()
+    get_store.cache_clear()
 
 
 @pytest.fixture

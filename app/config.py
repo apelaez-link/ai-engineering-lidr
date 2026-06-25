@@ -54,6 +54,19 @@ class Settings(BaseSettings):
     # para que la conversación no crezca sin control (ver material 05 de la sesión 02).
     llm_max_history_turns: int = 10
 
+    # ── Memoria conversacional (sesión 05) ──────────────────────────────────
+    # Tamaño de la ventana deslizante del historial conversacional (en PARES
+    # user+assistant). El estimador conversacional reenvía como mucho estos N
+    # turnos al LLM; al superarlos, descarta los más antiguos. 6 es un buen
+    # equilibrio entre contexto suficiente y coste de tokens controlado.
+    max_history_turns: int = 6
+
+    # Modelo usado por el EXTRACTOR de metadatos (un segundo LLM que destila los
+    # hechos del proyecto de cada turno vía Instructor). Por defecto reutilizamos
+    # un modelo económico de OpenAI; puede apuntarse a uno distinto del de
+    # estimación (la tarea de extracción es más simple y barata).
+    metadata_extractor_model: str = "gpt-4o-mini"
+
     # ── Cacheo (sesión 03) ─────────────────────────────────────────────────
     # Cacheo exact-match de respuestas. Misma transcripción + mismo contexto =
     # misma estimación, así que la segunda vez la servimos de caché (instantáneo,

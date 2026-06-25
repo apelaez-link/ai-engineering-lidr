@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.logging_config import configure_logging, get_logger
-from app.routers import estimations
+from app.routers import estimations, sessions
 
 # Configuramos structlog ANTES de crear la app, para que cualquier log de arranque
 # (y todos los de las peticiones) salga ya con el formato correcto.
@@ -42,6 +42,10 @@ app = FastAPI(
 # Registramos el router. Todos sus endpoints colgarán de /api/v1
 # -> POST /estimate queda en POST /api/v1/estimate, etc.
 app.include_router(estimations.router, prefix="/api/v1")
+
+# Router conversacional (sesión 05): memoria por sesión + adjuntos.
+# -> POST /api/v1/sessions, POST /api/v1/sessions/{id}/estimate
+app.include_router(sessions.router, prefix="/api/v1")
 
 # Ficheros estáticos: demo de streaming SSE en HTML puro (sin Streamlit).
 # Disponible en http://localhost:8000/static/sse_demo.html

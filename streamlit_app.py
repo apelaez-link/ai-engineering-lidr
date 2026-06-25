@@ -1,13 +1,20 @@
-"""Interfaz de producto del estimador (sesión 04).
+"""Interfaz CONVERSACIONAL del estimador (sesión 05).
 
-Sustituye el chat conversacional de la sesión 03 por un formulario tipado:
-el usuario rellena los campos estructurados (tipo de proyecto, nivel de detalle,
-formato de salida y descripción) y recibe una estimación bien formateada.
+Da el salto de la sesión 04 (formulario transaccional) a una UI con MEMORIA: cada
+pestaña del navegador abre una "sesión" en el backend (POST /sessions) y, a partir
+de ahí, cada mensaje del usuario es un turno de la misma conversación. El backend
+recuerda los turnos anteriores (ventana deslizante) y va acumulando los hechos del
+proyecto (project_metadata), que mostramos en el panel lateral.
 
-La UI habla con el backend FastAPI vía HTTP (httpx), de forma que la separación
-de responsabilidades es clara: Streamlit es SOLO presentación, la lógica vive
-en la API. La URL del backend se lee de la variable de entorno API_BASE_URL
-(default http://localhost:8000) y la API key NUNCA se hardcodea aquí.
+Novedades respecto a la sesión 04:
+  - Al cargar la página se crea una sesión y se guarda su id en st.session_state.
+  - Campo de transcripción + carga MÚLTIPLE de adjuntos (PDF/Word/txt).
+  - Cada envío hace POST /sessions/{id}/estimate (multipart/form-data) con httpx.
+  - El sidebar muestra el project_metadata actual (memoria viva de la conversación).
+  - Botón "Nueva conversación" que crea una sesión nueva y resetea el estado.
+
+La URL del backend se lee de API_BASE_URL (default http://localhost:8000). La API
+key NUNCA se hardcodea aquí: vive en el backend.
 
 Ejecútalo con:
     uv run streamlit run streamlit_app.py
@@ -26,47 +33,84 @@ load_dotenv()
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 st.set_page_config(
-    page_title="Estimador de software",
-    page_icon="📐",
+    page_title="Estimador conversacional",
+    page_icon="💬",
     layout="wide",
 )
 
-st.title("📐 Estimador de software")
+
+# ── Gestión de la sesión conversacional ──────────────────────────────────────
+def create_session() -> str | None:
+    """Crea una sesión nueva en el backend y devuelve su session_id (o None si falla)."""
+    try:
+        response = httpx.post(f"{API_BASE_URL}/api/v1/sessions", timeout=30.0)
+        response.raise_for_status()
+        return response.json()["session_id"]
+    except httpx.HTTPError as exc:
+        st.error(
+            f"No se pudo crear la sesión en el backend ({API_BASE_URL}). "
+            f"¿Está levantado?\n\nDetalle: {exc}"
+        )
+        return None
+
+
+def reset_conversation() -> None:
+    """Crea una sesión nueva y resetea el estado de la UI (botón 'Nueva conversación')."""
+    st.session_state.session_id = create_session()
+    st.session_state.turns = []          # historial de turnos mostrados en la UI
+    st.session_state.project_metadata = {}  # memoria acumulada (la pinta el sidebar)
+
+
+def fetch_project_metadata(session_id: str) -> dict:
+    """Consulta al backend la memoria viva (project_metadata) de la sesión.
+
+    El backend es la fuente de verdad de la memoria; la UI solo la PINTA. Si la
+    llamada falla, devolvemos {} (el sidebar mostrará 'sin hechos' en vez de romper).
+    """
+    try:
+        response = httpx.get(f"{API_BASE_URL}/api/v1/sessions/{session_id}", timeout=30.0)
+        response.raise_for_status()
+        return response.json().get("project_metadata", {})
+    except httpx.HTTPError:
+        return {}
+
+
+# Streamlit re-ejecuta el script entero en cada interacción; session_state persiste.
+# Al cargar por primera vez, abrimos una sesión conversacional automáticamente.
+if "session_id" not in st.session_state:
+    reset_conversation()
+
+
+st.title("💬 Estimador conversacional")
 st.caption(
-    "Rellena el formulario con los datos del proyecto y recibe una estimación "
-    "estructurada generada por IA. Sesión 04 — del chat al producto."
+    "Conversa con el estimador: recuerda los turnos anteriores y los hechos del "
+    "proyecto, y acepta documentos adjuntos como contexto. Sesión 05 — memoria "
+    "conversacional y contexto enriquecido."
 )
 
-# ── Inicialización del estado de sesión ─────────────────────────────────────
-# Streamlit re-ejecuta el script entero en cada interacción; session_state
-# persiste los datos entre ejecuciones (dentro de la misma sesión de usuario).
-if "estimations" not in st.session_state:
-    st.session_state.estimations = []   # historial simple de estimaciones
-if "last_meta" not in st.session_state:
-    st.session_state.last_meta = None
 
-
-# ── Sidebar: metadatos de la última llamada ──────────────────────────────────
+# ── Sidebar: memoria viva de la conversación ─────────────────────────────────
 with st.sidebar:
-    st.header("🔎 Observabilidad")
-    meta = st.session_state.last_meta
-    if meta:
-        st.subheader("Última estimación")
-        col1, col2 = st.columns(2)
-        col1.metric("Modelo", meta.get("model") or "—")
-        col2.metric("Latencia", f"{meta.get('latency_ms', 0):.0f} ms")
-        col1.metric("Tokens entrada", meta.get("tokens_in", 0))
-        col2.metric("Tokens salida", meta.get("tokens_out", 0))
-        col1.metric("Coste", f"${meta.get('cost_usd', 0):.6f}")
-        col2.metric("Versión prompt", meta.get("prompt_version", "—"))
-        flags = []
-        if meta.get("cache_hit"):
-            flags.append("⚡ caché")
-        if meta.get("fallback_used"):
-            flags.append("🔁 fallback")
-        st.caption(" · ".join(flags) if flags else "✅ llamada directa al proveedor primario")
+    st.header("🧠 Memoria del proyecto")
+    st.caption(f"Sesión: `{st.session_state.session_id or '—'}`")
+
+    metadata = st.session_state.get("project_metadata") or {}
+    if metadata and any(
+        metadata.get(k) for k in ("project_name", "assumed_team_size", "mentioned_technologies", "agreed_scope")
+    ):
+        if metadata.get("project_name"):
+            st.metric("Proyecto", metadata["project_name"])
+        if metadata.get("assumed_team_size"):
+            st.metric("Equipo asumido", f"{metadata['assumed_team_size']} personas")
+        techs = metadata.get("mentioned_technologies") or []
+        if techs:
+            st.write("**Tecnologías mencionadas**")
+            st.write(", ".join(techs))
+        if metadata.get("agreed_scope"):
+            st.write("**Alcance acordado**")
+            st.info(metadata["agreed_scope"])
     else:
-        st.caption("Aún no has generado ninguna estimación.")
+        st.caption("Todavía no se conocen hechos del proyecto. Empieza a conversar.")
 
     st.divider()
     st.subheader("⚙️ Configuración")
@@ -74,90 +118,97 @@ with st.sidebar:
         "Versión del prompt",
         options=["v1", "v2"],
         index=0,
-        help="Selecciona la variante del template Jinja2 para comparar resultados.",
+        help="Variante del template Jinja2 para comparar resultados.",
+    )
+    project_type = st.selectbox(
+        "Tipo de proyecto",
+        options=["web_saas", "mobile_app", "internal_tool", "data_pipeline"],
+    )
+    detail_level = st.radio(
+        "Nivel de detalle",
+        options=["summary", "medium", "detailed"],
+        index=1,
+        horizontal=True,
+    )
+    output_format = st.selectbox(
+        "Formato de salida",
+        options=["phases_table", "line_items", "narrative"],
     )
 
-
-# ── Formulario principal ─────────────────────────────────────────────────────
-with st.form("estimation_form", clear_on_submit=False):
-    st.subheader("Datos del proyecto")
-
-    description = st.text_area(
-        "Descripción del proyecto *",
-        placeholder=(
-            "Describe el proyecto con el mayor detalle posible: funcionalidades clave, "
-            "integraciones, usuarios objetivo, restricciones técnicas conocidas..."
-        ),
-        height=160,
-        help="Mínimo 20 caracteres, máximo 2000.",
-    )
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        project_type = st.selectbox(
-            "Tipo de proyecto *",
-            options=["mobile_app", "web_saas", "internal_tool", "data_pipeline"],
-            format_func=lambda x: {
-                "mobile_app": "📱 App móvil",
-                "web_saas": "🌐 Web / SaaS",
-                "internal_tool": "🛠️ Herramienta interna",
-                "data_pipeline": "📊 Pipeline de datos",
-            }[x],
-        )
-
-    with col2:
-        detail_level = st.radio(
-            "Nivel de detalle *",
-            options=["summary", "medium", "detailed"],
-            format_func=lambda x: {
-                "summary": "Resumen",
-                "medium": "Medio",
-                "detailed": "Detallado",
-            }[x],
-            horizontal=False,
-        )
-
-    with col3:
-        output_format = st.selectbox(
-            "Formato de salida *",
-            options=["phases_table", "line_items", "narrative"],
-            format_func=lambda x: {
-                "phases_table": "📋 Tabla de fases",
-                "line_items": "📝 Líneas de trabajo",
-                "narrative": "📖 Narrativa",
-            }[x],
-        )
-
-    submitted = st.form_submit_button("Estimar proyecto", use_container_width=True, type="primary")
+    st.divider()
+    if st.button("🆕 Nueva conversación", use_container_width=True):
+        reset_conversation()
+        st.rerun()
 
 
-# ── Procesamiento al enviar el formulario ────────────────────────────────────
-if submitted:
-    # Validación básica en el cliente antes de llamar a la API.
-    if not description or len(description.strip()) < 20:
-        st.error("La descripción es obligatoria y debe tener al menos 20 caracteres.")
+# ── Historial de turnos de la conversación ───────────────────────────────────
+for turn in st.session_state.get("turns", []):
+    with st.chat_message("user"):
+        st.markdown(turn["user"])
+        for fname in turn.get("attachments", []):
+            st.caption(f"📎 {fname}")
+    with st.chat_message("assistant"):
+        result = turn["result"]
+        st.markdown(f"**{result['summary']}**")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Duración", f"{result['total_duration_weeks']} sem")
+        col2.metric("Coste", f"{result['total_cost_eur']:,} €")
+        col3.metric("Confianza", f"{result['confidence_pct']}%")
+        if result.get("phases"):
+            st.table(
+                [
+                    {
+                        "Fase": p["name"],
+                        "Semanas": p["duration_weeks"],
+                        "Coste (€)": p["cost_eur"],
+                        "Confianza (%)": p["confidence_pct"],
+                    }
+                    for p in result["phases"]
+                ]
+            )
+
+
+# ── Entrada: transcripción + adjuntos ────────────────────────────────────────
+st.divider()
+uploaded_files = st.file_uploader(
+    "📎 Adjuntos (opcional): PDF, Word o texto",
+    type=["pdf", "docx", "txt"],
+    accept_multiple_files=True,
+    help="El texto de los documentos se inyecta como contexto enriquecido.",
+)
+
+transcript = st.chat_input("Escribe tu mensaje (transcripción de la reunión, requisitos, dudas…)")
+
+if transcript:
+    if not st.session_state.session_id:
+        st.error("No hay sesión activa. Pulsa 'Nueva conversación' en el panel lateral.")
         st.stop()
 
-    payload = {
-        "description": description.strip(),
+    # Preparamos el multipart: campos de formulario + ficheros adjuntos.
+    data = {
+        "transcript": transcript,
         "project_type": project_type,
         "detail_level": detail_level,
         "output_format": output_format,
     }
+    files = [
+        ("attachments", (f.name, f.getvalue(), f.type or "application/octet-stream"))
+        for f in (uploaded_files or [])
+    ]
 
-    with st.spinner("Generando estimación…"):
+    with st.spinner("Pensando…"):
         try:
             response = httpx.post(
-                f"{API_BASE_URL}/api/v1/estimate",
-                json=payload,
+                f"{API_BASE_URL}/api/v1/sessions/{st.session_state.session_id}/estimate",
+                data=data,
+                files=files or None,
                 params={"prompt_version": prompt_version},
                 timeout=120.0,
             )
             response.raise_for_status()
-            data = response.json()
+            payload = response.json()
         except httpx.HTTPStatusError as exc:
-            detail = exc.response.json().get("detail", str(exc)) if exc.response else str(exc)
+            detail = exc.response.json().get("detail", str(exc)) if exc.response is not None else str(exc)
             st.error(f"Error del servidor ({exc.response.status_code}): {detail}")
             st.stop()
         except httpx.RequestError as exc:
@@ -167,40 +218,17 @@ if submitted:
             )
             st.stop()
 
-    # Guardamos metadatos para el sidebar y añadimos al historial.
-    st.session_state.last_meta = {
-        "model": data.get("model"),
-        "latency_ms": data.get("latency_ms", 0),
-        "tokens_in": data.get("tokens_in", 0),
-        "tokens_out": data.get("tokens_out", 0),
-        "cost_usd": data.get("cost_usd", 0),
-        "prompt_version": data.get("prompt_version", prompt_version),
-        "cache_hit": data.get("cache_hit", False),
-        "fallback_used": data.get("fallback_used", False),
-    }
-    st.session_state.estimations.append(
+    # Guardamos el turno en el historial de la UI y refrescamos.
+    st.session_state.turns.append(
         {
-            "description": description[:80] + ("…" if len(description) > 80 else ""),
-            "project_type": project_type,
-            "output_format": output_format,
-            "text": data.get("text", ""),
+            "user": transcript,
+            "attachments": [f.name for f in (uploaded_files or [])],
+            "result": payload["result"],
         }
     )
 
-    st.success("Estimación generada correctamente.")
-    st.rerun()  # refresca el sidebar con los metadatos de esta llamada
-
-
-# ── Mostrar la última estimación y el historial ──────────────────────────────
-if st.session_state.estimations:
-    last = st.session_state.estimations[-1]
-    st.subheader("Última estimación")
-    st.markdown(last["text"])
-
-    if len(st.session_state.estimations) > 1:
-        with st.expander(f"Historial ({len(st.session_state.estimations)} estimaciones)", expanded=False):
-            for i, est in enumerate(reversed(st.session_state.estimations[:-1]), start=1):
-                st.markdown(f"**#{len(st.session_state.estimations) - i}** — {est['description']}")
-                st.caption(f"Tipo: {est['project_type']} | Formato: {est['output_format']}")
-                st.markdown(est["text"])
-                st.divider()
+    # Refrescamos la memoria del proyecto consultando el estado de la sesión: el
+    # backend es la fuente de verdad (ha corrido el extractor de metadatos por su
+    # cuenta), así que el sidebar muestra los hechos REALES acumulados.
+    st.session_state.project_metadata = fetch_project_metadata(st.session_state.session_id)
+    st.rerun()

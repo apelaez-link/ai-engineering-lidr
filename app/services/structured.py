@@ -110,3 +110,51 @@ def generate_structured_estimation(
         confidence_pct=result.confidence_pct,
     )
     return result
+
+
+def generate_structured_from_messages(
+    messages: list[dict[str, str]], version: str = "v1"
+) -> EstimationResult:
+    """Genera una estimación estructurada a partir de una lista de mensajes ya construida.
+
+    Variante CONVERSACIONAL (sesión 05) de generate_structured_estimation. En lugar de
+    renderizar el prompt aquí, recibe la lista completa de mensajes
+    [system, *turnos previos, user_actual] que el endpoint multi-turno arma a partir
+    del historial de la sesión (ConversationHistory.to_messages_list). De este modo el
+    LLM ve la conversación entera (dentro de la ventana deslizante) y mantiene memoria.
+
+    Reutiliza exactamente la misma mecánica de Instructor que el flujo transaccional:
+    mismo cliente, mismo response_model y misma política FIX/RETRY de los validadores.
+
+    Args:
+        messages: Lista de mensajes {"role", "content"}, empezando por el system.
+        version:  Versión del prompt (solo para trazas; el render ya está hecho).
+
+    Returns:
+        EstimationResult validado.
+
+    Raises:
+        ValueError: si no hay API key configurada.
+    """
+    settings = get_settings()
+    model, api_key = _resolve_primary_model()
+
+    client = instructor.from_litellm(litellm.completion)
+
+    logger.info("structured_conversational_call_started", model=model, turns=len(messages))
+    result: EstimationResult = client.chat.completions.create(
+        model=model,
+        api_key=api_key,
+        temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
+        response_model=EstimationResult,
+        max_retries=3,
+        messages=messages,
+    )
+    logger.info(
+        "structured_conversational_call_completed",
+        model=model,
+        phases=len(result.phases),
+        confidence_pct=result.confidence_pct,
+    )
+    return result

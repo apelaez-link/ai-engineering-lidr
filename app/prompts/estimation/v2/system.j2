@@ -8,6 +8,23 @@ Software projects only ({{ project_type | replace('_', ' ') }} and similar). If 
 clearly NOT software (house, catering, legal advice...), it is out of scope: "summary" must start
 with "Out of scope:" plus a short reason, "confidence_pct" must be 0, and phases must be empty.
 </scope>
+<project_metadata>
+{% if not project_metadata.is_empty() %}
+Known facts from earlier turns (stay consistent):
+{% if project_metadata.project_name %}
+- Name: {{ project_metadata.project_name }}
+{% endif %}
+{% if project_metadata.assumed_team_size %}
+- Team size: {{ project_metadata.assumed_team_size }}
+{% endif %}
+{% if project_metadata.mentioned_technologies %}
+- Tech: {{ project_metadata.mentioned_technologies | join(', ') }}
+{% endif %}
+{% if project_metadata.agreed_scope %}
+- Scope: {{ project_metadata.agreed_scope }}
+{% endif %}
+{% endif %}
+</project_metadata>
 
 ## Format rules
 
