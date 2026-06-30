@@ -22,6 +22,39 @@ Jinja2 versionados**. Así la calidad deja de depender de cómo promptea cada us
 > Los temas del directo (salida JSON estructurada, guardrails y cacheo semántico) **no** están en
 > esta entrega por decisión del enunciado; viven como teoría en `tutorial_aprendizaje/sesion-04/`.
 
+## Sesión 05 — memoria conversacional + contexto enriquecido (rama `pre-session-05`)
+
+El estimator pasa de **transaccional** a **conversacional**: mantiene memoria entre turnos dentro de
+una sesión y acepta adjuntos. (Parte de `session-04-live`, así que incluye además structured outputs +
+guardrails + cacheo semántico de la referencia del directo 04.)
+
+- **Sesiones y memoria** (`app/sessions/`): `POST /api/v1/sessions` crea una sesión (UUID) en un
+  **store en memoria del proceso**. `ConversationHistory` aplica **ventana deslizante** (`MAX_HISTORY_TURNS=6`
+  pares, preserva el system); `ProjectMetadata` guarda los **hechos** del proyecto (nombre, equipo,
+  tecnologías, alcance) **separados del historial**, así que sobreviven al truncado.
+- **Endpoint multi-turno**: `POST /api/v1/sessions/{id}/estimate` acepta **`multipart/form-data`**
+  (`transcript` + `attachments`) y devuelve la estimación estructurada. `GET /api/v1/sessions/{id}`
+  expone la memoria (lo usa el sidebar de Streamlit).
+- **Adjuntos — Camino B (extracción local)** (`app/attachments/extractor.py`): se extrae el texto con
+  **`pypdf`** (PDF) y **`python-docx`** (Word) y se concatena al transcript con separadores
+  `--- attachment: <archivo> ---`. *Por qué B y no A (multimodal):* independiente del proveedor, control
+  fino sobre qué entra al prompt, y prepara el terreno para el chunking de RAG del módulo 3.
+- **`project_metadata` — extractor LLM con Instructor** (`app/sessions/metadata_extractor.py`): tras cada
+  turno, una llamada con `instructor.from_litellm(response_model=ProjectMetadata)` extrae los hechos
+  nuevos y se **mergean** con los previos sin perderlos. El prompt incluye una constraint anti-alucinación
+  (*"nunca nombres una tecnología que no aparezca en la transcripción"*) + un ejemplo de formato.
+- **Cliente Streamlit conversacional**: crea la sesión al cargar, permite subir ficheros, muestra la
+  memoria en un panel y tiene botón "Nueva conversación".
+
+```bash
+uv run uvicorn app.main:app --reload        # API: POST /sessions, POST /sessions/{id}/estimate (/docs)
+uv run streamlit run streamlit_app.py       # UI conversacional → http://localhost:8501
+uv run pytest -q                            # 83 tests, sin API key (LLM/parsers mockeados)
+```
+
+> Lo que **no** entra (se hace en el directo de la sesión 5): memoria con anclas, tier dinámico y
+> Actor-Critic-Boss. Teoría y guía en `tutorial_aprendizaje/sesion-05/`.
+
 ## Arquitectura
 
 ```
