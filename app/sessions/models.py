@@ -192,3 +192,10 @@ class Session(BaseModel):
     history: ConversationHistory = Field(default_factory=ConversationHistory)
     project_metadata: ProjectMetadata = Field(default_factory=ProjectMetadata)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    # Contador TOTAL de turnos procesados en la sesión (sesión 06). No se puede derivar
+    # de len(history.turns) porque la ventana deslizante descarta los pares antiguos:
+    # tras saturar la ventana, ese len se queda fijo. Para la observabilidad por turno
+    # (turn_observed.turn_index, 1-based y monótono) necesitamos el conteo real, así que
+    # lo llevamos aparte y lo incrementamos en cada turno del endpoint conversacional.
+    turn_count: int = Field(default=0, description="Total turns processed (monotonic, 1-based).")

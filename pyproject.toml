@@ -41,6 +41,11 @@ dependencies = [
     "python-docx>=1.1.0",
     # Multipart para el endpoint conversacional con adjuntos (UploadFile/Form).
     "python-multipart>=0.0.9",
+    # Generador de PDFs sintéticos para el stress test (sesión 06). fpdf2 produce
+    # PDFs deterministas en memoria (Lorem Ipsum repetido) para medir cómo afecta
+    # el tamaño del contexto enriquecido a latencia/tokens/coste. Solo lo usa el
+    # script evals/stress/fixtures/build_pdfs.py (no entra en el camino de producción).
+    "fpdf2>=2.7.0",
 ]
 
 [dependency-groups]

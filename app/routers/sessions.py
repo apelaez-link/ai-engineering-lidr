@@ -24,6 +24,8 @@ El prefijo /api/v1 lo añade main.py al incluir este router (igual que el de est
 
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from app.config import get_settings
@@ -36,6 +38,11 @@ from app.schemas import (
     EstimationResponseStructured,
     OutputFormat,
     ProjectType,
+)
+from app.services.observation import (
+    TurnObservation,
+    count_tokens_and_cost,
+    emit_turn_observed,
 )
 from app.services.structured import generate_structured_from_messages
 from app.sessions.metadata_extractor import extract_metadata
@@ -123,6 +130,18 @@ async def estimate_in_session(
     description = user_content if len(user_content.strip()) >= 20 else (
         f"{user_content}\n\n(Conversational turn — see conversation history for context.)"
     )
+    # EstimationRequest.description tiene un máximo de 2000 caracteres. Con adjuntos
+    # grandes (el caso que estresa el stress test de la sesión 06), el contenido
+    # enriquecido lo supera y el turno reventaría con un 400. Lo TRUNCAMOS de forma
+    # defensiva al límite del schema, dejando una marca explícita. Es justamente uno de
+    # los puntos donde "el CAG empieza a romperse": a partir de cierto tamaño de
+    # contexto ya no cabe entero en el prompt y hay que recortar (o, en el futuro,
+    # resumir/anclar). Medimos el tamaño REAL en enriched_transcript_chars (sin truncar),
+    # de modo que el harness vea el tamaño que de verdad entró por la puerta.
+    _max_len = 2000  # debe coincidir con EstimationRequest.description (max_length=2000)
+    if len(description) > _max_len:
+        marker = "\n\n[...attachment truncated to fit prompt window...]"
+        description = description[: _max_len - len(marker)] + marker
     request = EstimationRequest(
         description=description,
         project_type=project_type,
@@ -140,12 +159,17 @@ async def estimate_in_session(
     messages.append({"role": "user", "content": current_user})
 
     # 4) GENERACIÓN estructurada (Instructor) con la conversación completa.
+    #    Medimos la LATENCIA con time.perf_counter SOLO alrededor de la generación
+    #    (la parte cara), no del parseo de adjuntos ni de los guardrails. perf_counter
+    #    es un reloj monótono de alta resolución: el indicado para medir duraciones.
+    gen_start = time.perf_counter()
     try:
         result = generate_structured_from_messages(messages, version=prompt_version)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Error al llamar al LLM: {exc}") from exc
+    latency_ms = round((time.perf_counter() - gen_start) * 1000, 1)
 
     # 5) GUARDRAIL DE SALIDA (red de seguridad para la regla de baja confianza).
     result = validate_output(result)
@@ -163,7 +187,56 @@ async def estimate_in_session(
         current=session.project_metadata,
     )
 
-    # 8) Devolver la estimación estructurada del turno.
+    # 8) OBSERVABILIDAD POR TURNO (sesión 06) — construir y emitir `turn_observed`.
+    #    turn_index es 1-based y MONÓTONO dentro de la sesión. No lo derivamos de
+    #    len(history.turns) porque la ventana deslizante descarta pares antiguos (ese
+    #    len se satura); usamos el contador propio de la sesión.
+    session.turn_count += 1
+    turn_index = session.turn_count
+
+    # Modelo efectivo para contar tokens/coste. Lo resolvemos igual que structured.py
+    # (el proveedor preferido con API key). DEFENSIVO: en tests/mock puede no haberlo,
+    # en cuyo caso contamos con un nombre genérico y count_tokens_and_cost devuelve 0.
+    try:
+        from app.services.structured import _resolve_primary_model
+
+        model_id, _api_key = _resolve_primary_model()
+    except Exception:  # noqa: BLE001 — sin proveedor configurado (tests, mock)
+        model_id = settings.openai_model
+
+    tokens_in, tokens_out, cost_usd = count_tokens_and_cost(
+        model=model_id, messages=messages, output_text=result.summary
+    )
+
+    observation = TurnObservation(
+        turn_index=turn_index,
+        session_id=session.session_id,
+        # Contexto enriquecido del turno = transcript + adjuntos (lo que de verdad
+        # mandamos como contenido del usuario). attachments_total_chars es el subconjunto.
+        enriched_transcript_chars=len(user_content),
+        attachments_total_chars=len(attachments_text),
+        # Mensajes del historial que sobreviven a la ventana deslizante (sin el system).
+        messages_in_window=len(session.history.turns),
+        # GAP (no implementado en nuestra base): anclas y summarizer acumulativo.
+        anchors_count=0,
+        summary_chars=0,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cost_usd=cost_usd,
+        latency_ms=latency_ms,
+        # El flujo conversacional usa Instructor directamente (no integra los cachés
+        # exact/semantic), así que aquí no hay hit de caché: "none". El campo se
+        # mantiene en el contrato para cuando se cablee el cacheo a este endpoint.
+        cache_hit_kind="none",
+        # GAP: no hay tier dinámico (Actor-Critic-Boss); lo dejamos None.
+        last_resolved_tier=None,
+    )
+    observation_dict = emit_turn_observed(observation)
+
+    # 9) Devolver la estimación estructurada del turno + su observación (sesión 06).
     return EstimationResponseStructured(
-        result=result, prompt_version=prompt_version, cached=False
+        result=result,
+        prompt_version=prompt_version,
+        cached=False,
+        observation=observation_dict,
     )

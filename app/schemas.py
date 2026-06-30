@@ -198,6 +198,17 @@ class EstimationResponseStructured(BaseModel):
     prompt_version: str = Field(description="Versión del template de prompt usado (v1, v2...).")
     cached: bool = Field(default=False, description="True si la respuesta vino del cacheo semántico.")
 
+    # ── Observabilidad por turno (sesión 06, "Stress test del CAG") ──────────
+    # El endpoint conversacional adjunta aquí el dict del evento `turn_observed`
+    # (latencia, tokens, coste, tamaño del contexto enriquecido, procedencia de
+    # caché...). Es OPCIONAL para no romper el contrato previo: las respuestas del
+    # flujo transaccional clásico siguen siendo válidas sin este campo. El runner
+    # del stress test lo lee directamente de la respuesta (ver app/services/observation.py).
+    observation: dict | None = Field(
+        default=None,
+        description="Medición estructurada del turno (turn_observed): latencia, tokens, coste, etc.",
+    )
+
 
 class EstimationResponse(BaseModel):
     """Respuesta del endpoint POST /estimate.
