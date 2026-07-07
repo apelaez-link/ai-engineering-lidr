@@ -75,59 +75,51 @@ tenemos, no sobre lo del directo que no asistimos*):
 
 ---
 
-## 🚨 El REPORT/CSV entregados son SINTÉTICOS (modo mock)
+## ✅ El REPORT/CSV entregados son DATOS REALES
 
-`evals/stress/results.csv` (360 filas) y `evals/stress/REPORT.md` se generaron en **modo mock**:
-el runner parchea las costuras que llamarían a litellm/OpenAI por funciones sintéticas, **sin
-ninguna llamada real ni coste**. Sirven para validar el *instrumental* (esquema de columnas,
-métricas, forma de las curvas), **no** para sacar conclusiones de rendimiento real. El REPORT lo
-avisa en su primera línea.
+`evals/stress/results.csv` (**355 filas**) y `evals/stress/REPORT.md` se generaron con **llamadas
+reales** a `gpt-4o-mini` (2 por turno: generación + extractor de metadatos). Latencia real, coste
+real (**$0.14 total** por las 355 conversaciones-turno). 5 turnos se saltaron por errores
+transitorios de la API — el runner es **resiliente** (reintenta + salta, no aborta). El REPORT
+detalla los parámetros en su cabecera.
 
-> Los tokens y el coste **sí** se calculan offline con `litellm.token_counter` /
-> `litellm.cost_per_token` (deterministas, sin red); solo la latencia es simulada.
+> El runner también tiene **modo mock** (`uv run python -m evals.stress.run` sin API key), útil
+> para validar el instrumental sin coste. No es lo entregado: el deliverable son datos reales.
 
-### 👉 Cómo regenerar el deliverable REAL (con tu API key)
+### 👉 Cómo reproducirlo (con tu API key)
 
 ```bash
-cd /Users/adrianpelaez/Documents/AIEngineering/ai-engineering-lidr-s06   # o tu checkout de pre-session-06
-
-# 1) Servidor con una API key real en .env (OPENAI_API_KEY o ANTHROPIC_API_KEY)
-uv run uvicorn app.main:app --reload
-
-# 2) En otra terminal, runner en modo HTTP contra ese servidor:
+cd ~/Documents/AIEngineering/ai-engineering-lidr-s06   # o tu checkout de pre-session-06
+# .env con OPENAI_API_KEY (o ANTHROPIC_API_KEY). in-process (un solo proceso, sin servidor):
 uv run python -m evals.stress.run \
-    --http http://localhost:8000 \
     --scenarios growing,pivot,contradiction \
-    --attachment-sizes 0,5,20,50,100 \
-    --repeats 3 \
+    --attachment-sizes 0,5,20,50,100 --repeats 3 \
     --output evals/stress/results.csv
+# equivalente contra servidor real: añade --http http://localhost:8000 con uvicorn levantado.
 ```
-
-Esto hará **decenas de llamadas reales al LLM** (coste real, modesto pero no nulo). Con el nuevo
-`results.csv`, recalcula las tablas del REPORT (latencia real, coste real del modelo configurado).
-**La estructura del REPORT no cambia; cambian los números.**
-
-> Si solo quieres ver el harness funcionando sin coste: `uv run python -m evals.stress.run`
-> (in-process, mock automático si no hay API key) regenera el CSV/REPORT sintéticos.
 
 ---
 
-## Lectura del REPORT sintético (la forma de las curvas)
+## Lectura del REPORT real (los hallazgos)
 
-Aun siendo sintético, el REPORT ya enseña los **dos puntos de ruptura** que el directo (RAG)
-viene a resolver:
+Los datos reales muestran **tres puntos de ruptura** (más nítidos que en mock, donde la latencia
+era simulada):
 
-1. **Adjuntos grandes → truncado silencioso.** `enriched_transcript_chars` crece de 16 K a 398 K,
-   pero `tokens_in` se **congela en ~2 611** desde los 5 KB: el modelo deja de ver el 99% del
-   adjunto y aun así devuelve 200 y una estimación con buena pinta. Sin la instrumentación, este
-   fallo es invisible.
-2. **Memoria conversacional → coste con techo + deriva.** El coste por turno sube linealmente
-   hasta el turno 7 y se **aplana en el turno 8** cuando la ventana (`MAX_HISTORY_TURNS=6`)
-   empieza a tirar lo antiguo: el coste deja de crecer **a cambio de olvidar**. En el escenario
-   `contradiction` la memoria ya pierde el nombre del proyecto en el turno 2 (el extractor no lo
-   fijó como hecho duradero).
+1. **Latencia por encima del SLA desde el turno 1.** Solo el **37.7%** de los turnos entra en el
+   presupuesto de 4 s (P50 global **5.1 s**, P95 **15.9 s**, pico 38.5 s), **incluso a 0 KB de
+   adjunto** (46% en presupuesto). El problema es el modelo, no el tamaño del contexto.
+2. **Adjuntos > 5 KB → truncado silencioso.** `enriched_transcript_chars` crece de 77 a **398 K**,
+   pero `tokens_in` se **congela en ~2 760** desde los 5 KB: el modelo deja de ver el ~99% del
+   adjunto y aun así devuelve 200. Como el adjunto se trunca, su tamaño **casi no mueve** la
+   latencia (confirma que el cuello no es el contexto).
+3. **Deriva de memoria en hechos contradictorios.** `growing`/`pivot` mantienen recall **1.000**;
+   `contradiction` cae a **0.508**: el presupuesto `30k` fijado en el turno 3 **desaparece de la
+   memoria en los turnos 4–7** porque no se promueve a `ProjectMetadata` y no hay summarizer/anclas.
+   Además el coste por turno sube ×3.60 hasta el turno 7 y se aplana en el 8 (ventana deslizante).
 
-Esos dos puntos son justo lo que reforzarían **anchors + summarizer + tier** (las piezas del GAP).
+El coste **no** es el cuello de botella *con este modelo* (100% dentro de 0.02 USD/turno). Los tres
+puntos son justo lo que reforzarían las piezas del directo (streaming/modelo más rápido, summarizer,
+anclas) y la razón de saltar a RAG cuando el corpus deja de caber con calidad.
 
 ---
 
@@ -137,7 +129,7 @@ Esos dos puntos son justo lo que reforzarían **anchors + summarizer + tier** (l
 uv sync                                              # instala (añade fpdf2)
 uv run pytest -q                                     # 96 tests, sin API key (todo mockeado)
 uv run python -m evals.stress.run --help             # ver opciones del runner
-uv run python -m evals.stress.run                    # CSV/REPORT sintéticos (in-process, mock)
+uv run python -m evals.stress.run                    # in-process: real si hay .env con key, mock si no
 ```
 
 ---

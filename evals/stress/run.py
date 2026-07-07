@@ -355,6 +355,44 @@ def _evaluate_row(
     }
 
 
+def _estimate_with_retries(
+    transport: "Transport",
+    session_id: str,
+    transcript: str,
+    attachment: tuple[str, bytes] | None,
+    attempts: int = 3,
+) -> dict | None:
+    """Llama a ``transport.estimate`` con reintentos + backoff lineal.
+
+    Robustez para ejecuciones DESATENDIDAS contra APIs reales: un 429/500/timeout
+    transitorio no debe abortar toda la matriz (que puede ser de cientos de turnos).
+    Reintentar el MISMO turno es seguro porque el router solo actualiza el historial y
+    el ProjectMetadata en el camino de ÉXITO: si la generación falla (HTTP 5xx), el
+    estado de la sesión no avanza y el reintento parte del mismo punto.
+
+    Devuelve la respuesta JSON del turno, o ``None`` si agota los reintentos (el
+    llamante salta esa fila con un aviso, en vez de tumbar toda la ejecución). En modo
+    mock no hay red, así que el primer intento siempre pasa: este camino solo se activa
+    con llamadas reales.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return transport.estimate(session_id, transcript, attachment)
+        except Exception as exc:  # noqa: BLE001 — cualquier fallo transitorio de transporte/API
+            if attempt == attempts:
+                print(
+                    f"[stress] estimate falló definitivamente ({attempt}/{attempts}): {exc}",
+                    file=sys.stderr,
+                )
+                return None
+            print(
+                f"[stress] estimate falló ({attempt}/{attempts}), reintento: {exc}",
+                file=sys.stderr,
+            )
+            time.sleep(2.0 * attempt)
+    return None
+
+
 def run(config: RunConfig) -> int:
     """Ejecuta la matriz completa y escribe el CSV. Devuelve el nº de filas escritas."""
     transport = (
@@ -378,7 +416,19 @@ def run(config: RunConfig) -> int:
                     session_id = transport.create_session()
                     for turn_index, transcript, fact in turns:
                         attachment = _build_attachment(size_kb)
-                        response = transport.estimate(session_id, transcript, attachment)
+                        response = _estimate_with_retries(
+                            transport, session_id, transcript, attachment
+                        )
+                        if response is None:
+                            # Turno irrecuperable tras reintentos: lo saltamos con aviso.
+                            # No escribimos fila (mejor un CSV con menos filas y limpio
+                            # que una ejecución abortada a la mitad).
+                            print(
+                                f"[stress] saltado turno {scenario_name}/{size_kb}KB/"
+                                f"rep{repeat}/t{turn_index}",
+                                file=sys.stderr,
+                            )
+                            continue
                         observation = response.get("observation") or {}
 
                         # Snapshot de la sesión + historial reconstruido para el drift.
