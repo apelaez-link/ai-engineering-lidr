@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.embedding_pipeline import router as embeddings
 from app.logging_config import configure_logging, get_logger
 from app.routers import estimations, sessions
 
@@ -46,6 +47,10 @@ app.include_router(estimations.router, prefix="/api/v1")
 # Router conversacional (sesión 05): memoria por sesión + adjuntos.
 # -> POST /api/v1/sessions, POST /api/v1/sessions/{id}/estimate
 app.include_router(sessions.router, prefix="/api/v1")
+
+# Pipeline de embeddings (sesión 07): chunking estructural + vectorización.
+# -> POST /embeddings/ingest  (sin /api/v1: es un subsistema nuevo del Módulo 3 RAG).
+app.include_router(embeddings.router, prefix="/embeddings")
 
 # Ficheros estáticos: demo de streaming SSE en HTML puro (sin Streamlit).
 # Disponible en http://localhost:8000/static/sse_demo.html

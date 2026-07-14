@@ -55,6 +55,39 @@ uv run pytest -q                            # 83 tests, sin API key (LLM/parsers
 > Lo que **no** entra (se hace en el directo de la sesión 5): memoria con anclas, tier dinámico y
 > Actor-Critic-Boss. Teoría y guía en `tutorial_aprendizaje/sesion-05/`.
 
+## Sesión 06 — stress test del CAG (rama `pre-session-06`)
+
+Instrumentación y medición: un evento `turn_observed` por turno y un harness autónomo
+`evals/stress/` (escenarios multi-turno, adjuntos calibrados, métricas de latencia/coste/memoria)
+que mide **dónde se rompe el CAG** antes de adoptar RAG. Deliverable: `evals/stress/REPORT.md` +
+`results.csv` (datos reales). Teoría y guía en `tutorial_aprendizaje/sesion-06/`.
+
+## Sesión 07 — embeddings y chunking (rama `pre-session-07`)
+
+Abre la parte práctica del **Módulo 3 (RAG)**: convierte los presupuestos históricos (JSON) en
+**vectores**. Módulo nuevo `app/embedding_pipeline/`:
+
+- **Chunker estructural** (`chunker.py`): `JSONStructuralChunker` — **un componente de presupuesto =
+  un chunk**, con un **header contextual** del presupuesto padre prepended al texto (proyecto,
+  sector, año, tecnología), metadata filtrable, `chunk_id = {budget_id}::{component_id}` y
+  `token_count` contado con **tiktoken**.
+- **Embedder** (`embedder.py`): `OpenAIEmbedder` sobre `text-embedding-3-small` (1536 dims), llamadas
+  en **batches de 100**, reintento exponencial ante `RateLimitError`, coste estimado ($0.02/1M tokens).
+- **Endpoint** `POST /embeddings/ingest` (`router.py`): recibe presupuestos, devuelve sus chunks
+  vectorizados + estadísticas (total_budgets/chunks/tokens/cost). Registrado bajo `/embeddings`.
+- **`similarity.py`** (coseno/dot/euclídea a mano, sin numpy) + **`scripts/compare.py`** (CLI de
+  similitud coseno entre dos textos) + **`data/budgets_sample.json`** (15 presupuestos, 37
+  componentes) + **`SANITY_CHECK.md`** (3 parejas con embeddings reales).
+
+```bash
+uv run uvicorn app.main:app --reload         # POST /embeddings/ingest (ver /docs)
+uv run python scripts/compare.py --text-a "OAuth 2.0 auth backend" --text-b "JWT authorization service"
+uv run pytest -q                             # 118 tests, sin API key (LLM/embeddings mockeados)
+```
+
+> Lo que **no** entra (es el directo / la sesión 8): otras estrategias de chunking, comparativa de
+> modelos, retrieval y **persistencia en pgvector**. Teoría y guía en `tutorial_aprendizaje/sesion-07/`.
+
 ## Arquitectura
 
 ```

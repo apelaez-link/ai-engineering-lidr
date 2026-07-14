@@ -46,6 +46,12 @@ dependencies = [
     # el tamaño del contexto enriquecido a latencia/tokens/coste. Solo lo usa el
     # script evals/stress/fixtures/build_pdfs.py (no entra en el camino de producción).
     "fpdf2>=2.7.0",
+    # Pipeline de embeddings (sesión 07). tiktoken cuenta tokens del texto de cada
+    # chunk con el tokenizador exacto de text-embedding-3-small (para detectar chunks
+    # grandes y estimar coste). openai (ya arriba) genera los embeddings. NO añadimos
+    # numpy/scikit-learn por el ejercicio: la similitud coseno se calcula a mano en
+    # embedding_pipeline/similarity.py (numpy ya estaba por el cacheo semántico de S04).
+    "tiktoken>=0.7.0",
 ]
 
 [dependency-groups]
