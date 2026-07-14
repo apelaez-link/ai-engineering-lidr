@@ -52,6 +52,16 @@ dependencies = [
     # numpy/scikit-learn por el ejercicio: la similitud coseno se calcula a mano en
     # embedding_pipeline/similarity.py (numpy ya estaba por el cacheo semántico de S04).
     "tiktoken>=0.7.0",
+    # Persistencia vectorial (sesión 08): PostgreSQL + pgvector.
+    #   sqlalchemy 2.0  -> ORM async (Document/Chunk) y construcción de queries.
+    #   asyncpg         -> driver async oficial recomendado por SQLAlchemy para Postgres.
+    #   pgvector        -> registra el tipo `vector` en SQLAlchemy y expone los
+    #                      operadores de distancia (cosine_distance, l2_distance...).
+    #   alembic         -> migraciones del esquema (extensión + tablas documents/chunks).
+    "sqlalchemy>=2.0",
+    "asyncpg>=0.29",
+    "pgvector>=0.3",
+    "alembic>=1.13",
 ]
 
 [dependency-groups]

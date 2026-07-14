@@ -80,6 +80,15 @@ class Settings(BaseSettings):
     # URL de Redis (solo si cache_backend="redis").
     redis_url: str = "redis://localhost:6379/0"
 
+    # ── Persistencia vectorial (sesión 08): PostgreSQL + pgvector ───────────
+    # URL de conexión async (driver asyncpg). Apunta a localhost:5433 porque el
+    # docker-compose publica el Postgres del proyecto en 5433 (el 5432 suele estar
+    # ocupado por otro Postgres local). Corriendo la app dentro de un contenedor de
+    # la misma red, el host sería `postgres:5432`. Sobreescribible con DATABASE_URL.
+    database_url: str = (
+        "postgresql+asyncpg://estimator:estimator@localhost:5433/estimator"
+    )
+
     # ── Cacheo SEMÁNTICO (sesión 04) ────────────────────────────────────────
     # A diferencia del exact-match, el cacheo semántico captura reformulaciones:
     # dos descripciones distintas con la MISMA intención comparten respuesta.

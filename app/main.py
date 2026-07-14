@@ -48,9 +48,10 @@ app.include_router(estimations.router, prefix="/api/v1")
 # -> POST /api/v1/sessions, POST /api/v1/sessions/{id}/estimate
 app.include_router(sessions.router, prefix="/api/v1")
 
-# Pipeline de embeddings (sesión 07): chunking estructural + vectorización.
-# -> POST /embeddings/ingest  (sin /api/v1: es un subsistema nuevo del Módulo 3 RAG).
-app.include_router(embeddings.router, prefix="/embeddings")
+# Pipeline de embeddings (sesión 07-08): chunking + vectorización + persistencia.
+# Rutas con path completo en el propio router (POST /embeddings/ingest, POST /search),
+# así que se incluye SIN prefijo. Son subsistema del Módulo 3 RAG (fuera de /api/v1).
+app.include_router(embeddings.router)
 
 # Ficheros estáticos: demo de streaming SSE en HTML puro (sin Streamlit).
 # Disponible en http://localhost:8000/static/sse_demo.html

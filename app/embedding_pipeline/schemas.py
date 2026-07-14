@@ -92,26 +92,63 @@ class EmbeddedChunk(Chunk):
     embedding: list[float]
 
 
-# ── Contrato HTTP del endpoint POST /embeddings/ingest ───────────────────────────
+# ── Contrato HTTP de POST /embeddings/ingest (sesión 08: persiste, no devuelve vectores) ──
 
 
 class IngestRequest(BaseModel):
-    """Payload de entrada: una lista de presupuestos a vectorizar."""
+    """Payload de entrada: UN documento (un presupuesto) a persistir.
 
-    budgets: list[Budget]
+    Cambia respecto a la sesión 07 (que recibía una lista y devolvía los vectores):
+    ahora un documento = un source_path único = un presupuesto. `content` es el JSON
+    completo del presupuesto, que el chunker trocea internamente.
+    """
 
-
-class IngestStats(BaseModel):
-    """Estadísticas agregadas de una ingesta (útiles para el cliente y para logs)."""
-
-    total_budgets: int
-    total_chunks: int
-    total_tokens: int
-    estimated_cost_usd: float
+    source_path: str = Field(description="Ruta/identificador único del documento origen.")
+    document_type: str = Field(description="Tipo de documento, p.ej. 'historical_budget'.")
+    content: Budget = Field(description="El presupuesto completo (JSON) a trocear y vectorizar.")
 
 
 class IngestResponse(BaseModel):
-    """Payload de salida: los chunks vectorizados + las estadísticas de la ingesta."""
+    """Payload de salida (200): identificadores y métricas de la ingesta persistida."""
 
-    chunks: list[EmbeddedChunk]
-    stats: IngestStats
+    document_id: int
+    chunks_created: int
+    embedding_dimension: int
+    ingestion_time_ms: int
+
+
+class DuplicateResponse(BaseModel):
+    """Payload de salida (409): el documento ya existía; devolvemos su id."""
+
+    detail: str = "Document already ingested"
+    document_id: int
+
+
+# ── Contrato HTTP de POST /search (sesión 08) ────────────────────────────────────
+
+
+class SearchRequest(BaseModel):
+    """Payload de entrada: una consulta en lenguaje natural y cuántos resultados."""
+
+    query: str
+    k: int = Field(default=5, ge=1, le=50)
+
+
+class SearchResultItem(BaseModel):
+    """Un chunk recuperado, con su distancia coseno a la consulta."""
+
+    chunk_id: int
+    document_id: int
+    chunk_type: str
+    content: str
+    distance: float
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SearchResponse(BaseModel):
+    """Payload de salida: la consulta, sus parámetros y los resultados ordenados."""
+
+    query: str
+    k: int
+    search_time_ms: int
+    results: list[SearchResultItem]

@@ -1,76 +1,157 @@
-"""Router del pipeline de embeddings (sesión 07): POST /embeddings/ingest.
+"""Router del pipeline de embeddings (sesión 08): persistencia + búsqueda semántica.
 
-Orquesta la secuencia mínima: chunker.chunk(budgets) -> embedder.embed_many(chunks)
--> ensamblar IngestResponse con las estadísticas agregadas.
+Dos endpoints, ambos async y transaccionales sobre PostgreSQL + pgvector:
 
-Se registra en main.py bajo el prefijo /embeddings, así que la ruta completa queda
-POST /embeddings/ingest y aparece en /docs (Swagger).
+  POST /embeddings/ingest  -> trocea un presupuesto, embebe sus chunks y los PERSISTE
+                              (document + chunks) en una sola transacción. 409 si el
+                              source_path ya existe.
+  POST /search             -> embebe la query y devuelve los k chunks más cercanos por
+                              distancia coseno.
 
-El embedder se inyecta como dependencia de FastAPI (get_embedder) para que los tests
-puedan sustituirlo por un doble sin tocar la red (app.dependency_overrides).
+Cambio respecto a la sesión 07: ingest ya no devuelve los vectores en la respuesta;
+los guarda y devuelve identificadores + métricas. La sesión 07 vivía en memoria; ésta
+persiste.
+
+El session (AsyncSession) y el embedder se inyectan como dependencias para que los
+tests los sustituyan sin tocar la BBDD ni la API real.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import time
 
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import get_session
 from app.logging_config import get_logger
 
+from . import repository
 from .chunker import JSONStructuralChunker
-from .embedder import OpenAIEmbedder, estimate_cost_usd
-from .schemas import IngestRequest, IngestResponse, IngestStats
+from .embedder import EMBEDDING_DIMENSIONS, OpenAIEmbedder
+from .schemas import (
+    IngestRequest,
+    IngestResponse,
+    SearchRequest,
+    SearchResponse,
+    SearchResultItem,
+)
 
 logger = get_logger(component="embeddings_router")
 
 router = APIRouter(tags=["embeddings"])
 
-# El chunker no toca la red ni necesita API key: una instancia de módulo basta.
+# El chunker no toca la red ni la BBDD: una instancia de módulo basta.
 _chunker = JSONStructuralChunker()
 
 
 def get_embedder() -> OpenAIEmbedder:
-    """Dependencia: construye el embedder real (con la API key del .env).
-
-    Los tests la sobrescriben con app.dependency_overrides[get_embedder] para inyectar
-    un embedder falso y evitar llamadas reales a la API.
-    """
+    """Dependencia: construye el embedder real (API key del .env). Los tests la
+    sobreescriben con app.dependency_overrides[get_embedder]."""
     return OpenAIEmbedder()
 
 
-@router.post("/ingest", response_model=IngestResponse)
-def ingest(
+@router.post("/embeddings/ingest", response_model=IngestResponse)
+async def ingest(
     request: IngestRequest,
+    session: AsyncSession = Depends(get_session),
     embedder: OpenAIEmbedder = Depends(get_embedder),
-) -> IngestResponse:
-    """Trocea los presupuestos, vectoriza los chunks y devuelve vectores + estadísticas.
+):
+    """Persiste un presupuesto (document + chunks vectorizados) atómicamente.
 
-    - 200: éxito.
-    - 422: validación Pydantic fallida (lo gestiona FastAPI automáticamente).
-    - 500: error no controlado de la API de embeddings (mensaje genérico al cliente,
-      detalle en los logs).
+    - 200: ingesta correcta (IngestResponse con document_id y métricas).
+    - 409: ya existe un documento con ese source_path (detail + document_id).
+    - 422: validación Pydantic (lo gestiona FastAPI).
+    - 500: error no controlado de la API de embeddings o de la BBDD.
     """
-    chunks = _chunker.chunk(request.budgets)
+    started = time.perf_counter()
 
+    # 1) Idempotencia: no re-ingestar el mismo fichero dos veces.
+    existing_id = await repository.get_document_id_by_source(session, request.source_path)
+    if existing_id is not None:
+        logger.info(
+            "ingest_duplicate", source_path=request.source_path, document_id=existing_id
+        )
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Document already ingested", "document_id": existing_id},
+        )
+
+    # 2) Chunk (un presupuesto -> N chunks) y 3) embeber en batch.
+    chunks = _chunker.chunk([request.content])
     try:
         embedded = embedder.embed_many(chunks)
-    except Exception as exc:  # noqa: BLE001 — traducimos cualquier fallo de la API a 500
-        logger.error("embeddings_ingest_failed", error=str(exc))
-        raise HTTPException(
-            status_code=500, detail="Error generando los embeddings."
-        ) from exc
+    except Exception as exc:  # noqa: BLE001 — fallo de la API de embeddings -> 500
+        logger.error("ingest_embedding_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail="Error generando los embeddings.") from exc
 
-    total_tokens = sum(chunk.token_count for chunk in chunks)
-    stats = IngestStats(
-        total_budgets=len(request.budgets),
-        total_chunks=len(embedded),
-        total_tokens=total_tokens,
-        estimated_cost_usd=round(estimate_cost_usd(total_tokens), 6),
-    )
+    # 4) Persistir document + chunks en una transacción.
+    try:
+        document_id = await repository.persist_document(
+            session,
+            source_path=request.source_path,
+            document_type=request.document_type,
+            document_metadata={
+                "budget_id": request.content.budget_id,
+                "client_sector": request.content.client_metadata.sector,
+                "main_technology": request.content.main_technology,
+                "year": request.content.year,
+            },
+            embedded_chunks=embedded,
+        )
+    except Exception as exc:  # noqa: BLE001 — fallo de BBDD -> 500 (transacción revertida)
+        await session.rollback()
+        logger.error("ingest_persist_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail="Error persistiendo el documento.") from exc
+
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
     logger.info(
-        "embeddings_ingest_completed",
-        total_budgets=stats.total_budgets,
-        total_chunks=stats.total_chunks,
-        total_tokens=stats.total_tokens,
-        estimated_cost_usd=stats.estimated_cost_usd,
+        "ingest_completed",
+        document_id=document_id,
+        chunks_created=len(embedded),
+        ingestion_time_ms=elapsed_ms,
     )
-    return IngestResponse(chunks=embedded, stats=stats)
+    return IngestResponse(
+        document_id=document_id,
+        chunks_created=len(embedded),
+        embedding_dimension=EMBEDDING_DIMENSIONS,
+        ingestion_time_ms=elapsed_ms,
+    )
+
+
+@router.post("/search", response_model=SearchResponse)
+async def search(
+    request: SearchRequest,
+    session: AsyncSession = Depends(get_session),
+    embedder: OpenAIEmbedder = Depends(get_embedder),
+) -> SearchResponse:
+    """Búsqueda semántica: embebe la query y devuelve los k chunks más cercanos.
+
+    La query se embebe con el MISMO modelo que la ingesta (text-embedding-3-small),
+    condición necesaria para que las distancias sean comparables.
+    """
+    started = time.perf_counter()
+
+    try:
+        query_vector = embedder.embed_one(request.query)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("search_embedding_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail="Error embebiendo la consulta.") from exc
+
+    rows = await repository.search_chunks(session, query_vector, request.k)
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+
+    logger.info(
+        "search_completed",
+        query_chars=len(request.query),
+        k=request.k,
+        results=len(rows),
+        search_time_ms=elapsed_ms,
+    )
+    return SearchResponse(
+        query=request.query,
+        k=request.k,
+        search_time_ms=elapsed_ms,
+        results=[SearchResultItem(**row) for row in rows],
+    )
