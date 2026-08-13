@@ -17,20 +17,20 @@
 
 ```mermaid
 flowchart TB
-  FE["Frontend: Streamlit (UI conversacional CAG, S05)"]
-  BN["Backend de negocio: no existe como servicio propio;<br/>el frontend llama directo al servicio IA"]
+  FE["Frontend: Streamlit UI conversacional CAG (S05)"]
+  BN["Backend de negocio: no existe como servicio propio; el frontend llama directo al servicio IA"]
 
   subgraph IA["Servicio IA (FastAPI)"]
     direction LR
-    B["Presupuestos JSON"] --> ING["POST /embeddings/ingest<br/>chunk + embed + persist"]
-    ING --> DB[("PostgreSQL + pgvector<br/>37 chunks, sin indice vectorial")]
-    Q["Transcripcion o consulta"] --> SR["POST /search<br/>embed + top-k coseno"]
+    B["Presupuestos JSON"] --> ING["POST /embeddings/ingest : chunk, embed y persist"]
+    ING --> DB[("PostgreSQL + pgvector : 37 chunks, sin indice vectorial")]
+    Q["Transcripcion o consulta"] --> SR["POST /search : embed + top-k coseno"]
     SR --> DB
     SR --> R["Devuelve 5 chunks + distancias"]
   end
 
   FE --> IA
-  R --> WALL["FIN DE LO IMPLEMENTADO<br/>Faltan: reformular query, ensamblar contexto y generar estimacion"]
+  R --> WALL["FIN DE LO IMPLEMENTADO. Faltan: reformular query, ensamblar contexto y generar estimacion"]
 
   classDef done fill:#dcfce7,stroke:#16a34a,color:#111
   classDef wall fill:#fee2e2,stroke:#dc2626,color:#111
@@ -167,11 +167,11 @@ señal de esos temas quedó enterrada en el centroide difuso del Paso 1.
 
 ```mermaid
 flowchart LR
-  T["Transcripcion"] --> QR["Reformular query<br/>NUEVO"]
-  QR --> RET["Retrieve<br/>top-k + threshold + filtros<br/>NUEVO"]
-  RET --> DB[("pgvector<br/>reutilizado")]
-  RET --> CTX["Ensamblar contexto<br/>NUEVO"]
-  CTX --> GEN["Generar estimacion<br/>grounding + citas<br/>NUEVO"]
+  T["Transcripcion"] --> QR["Reformular query (NUEVO)"]
+  QR --> RET["Retrieve : top-k + threshold + filtros (NUEVO)"]
+  RET --> DB[("pgvector (reutilizado)")]
+  RET --> CTX["Ensamblar contexto (NUEVO)"]
+  CTX --> GEN["Generar estimacion : grounding + citas (NUEVO)"]
   GEN --> OUT["Estimacion + fuentes"]
 
   classDef old fill:#dcfce7,stroke:#16a34a,color:#111
