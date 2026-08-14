@@ -28,6 +28,11 @@ def _or_tsquery(config: str, query_text: str):
     Así reutilizamos el análisis léxico correcto de Postgres y obtenemos matching OR,
     que sigue aprovechando el índice GIN vía el operador @@.
     """
+    # Nota: la lección de búsqueda híbrida del curso usa websearch_to_tsquery (sintaxis
+    # natural de buscador). También une los términos con AND por defecto, así que sobre
+    # nuestros chunks cortos + consultas largas dejaría la léxica casi vacía; por eso
+    # partimos de plainto_tsquery y forzamos OR. Misma normalización léxica, matching más
+    # permisivo, y sigue usando el índice GIN vía @@.
     plain_text = cast(func.plainto_tsquery(config, query_text), Text)
     or_text = func.replace(plain_text, " & ", " | ")
     return func.to_tsquery(config, or_text)
