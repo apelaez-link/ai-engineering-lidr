@@ -54,6 +54,19 @@ class Settings(BaseSettings):
     # para que la conversación no crezca sin control (ver material 05 de la sesión 02).
     llm_max_history_turns: int = 10
 
+    # ── Memoria conversacional (sesión 05) ──────────────────────────────────
+    # Tamaño de la ventana deslizante del historial conversacional (en PARES
+    # user+assistant). El estimador conversacional reenvía como mucho estos N
+    # turnos al LLM; al superarlos, descarta los más antiguos. 6 es un buen
+    # equilibrio entre contexto suficiente y coste de tokens controlado.
+    max_history_turns: int = 6
+
+    # Modelo usado por el EXTRACTOR de metadatos (un segundo LLM que destila los
+    # hechos del proyecto de cada turno vía Instructor). Por defecto reutilizamos
+    # un modelo económico de OpenAI; puede apuntarse a uno distinto del de
+    # estimación (la tarea de extracción es más simple y barata).
+    metadata_extractor_model: str = "gpt-4o-mini"
+
     # ── Cacheo (sesión 03) ─────────────────────────────────────────────────
     # Cacheo exact-match de respuestas. Misma transcripción + mismo contexto =
     # misma estimación, así que la segunda vez la servimos de caché (instantáneo,
@@ -66,6 +79,28 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 86_400
     # URL de Redis (solo si cache_backend="redis").
     redis_url: str = "redis://localhost:6379/0"
+
+    # ── Persistencia vectorial (sesión 08): PostgreSQL + pgvector ───────────
+    # URL de conexión async (driver asyncpg). Apunta a localhost:5433 porque el
+    # docker-compose publica el Postgres del proyecto en 5433 (el 5432 suele estar
+    # ocupado por otro Postgres local). Corriendo la app dentro de un contenedor de
+    # la misma red, el host sería `postgres:5432`. Sobreescribible con DATABASE_URL.
+    database_url: str = (
+        "postgresql+asyncpg://estimator:estimator@localhost:5433/estimator"
+    )
+
+    # ── Cacheo SEMÁNTICO (sesión 04) ────────────────────────────────────────
+    # A diferencia del exact-match, el cacheo semántico captura reformulaciones:
+    # dos descripciones distintas con la MISMA intención comparten respuesta.
+    # Embebe la descripción y busca por similitud coseno dentro de un "bucket"
+    # determinista (mismos parámetros). Store en memoria por defecto (sin infra);
+    # en producción se usaría redisvl/Redis como backend vectorial.
+    semantic_cache_enabled: bool = True
+    # Modelo de embeddings (configurable). Default económico de OpenAI.
+    semantic_cache_embedding_model: str = "text-embedding-3-small"
+    # Umbral de similitud coseno para considerar HIT (0-1). 0.92 es conservador:
+    # exige descripciones muy parecidas semánticamente para reutilizar respuesta.
+    semantic_cache_threshold: float = 0.92
 
     # ── Observabilidad / logging (sesión 03) ───────────────────────────────
     # "development" -> logs de consola legibles y coloreados.

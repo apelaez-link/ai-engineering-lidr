@@ -22,6 +22,117 @@ Jinja2 versionados**. Así la calidad deja de depender de cómo promptea cada us
 > Los temas del directo (salida JSON estructurada, guardrails y cacheo semántico) **no** están en
 > esta entrega por decisión del enunciado; viven como teoría en `tutorial_aprendizaje/sesion-04/`.
 
+## Sesión 05 — memoria conversacional + contexto enriquecido (rama `pre-session-05`)
+
+El estimator pasa de **transaccional** a **conversacional**: mantiene memoria entre turnos dentro de
+una sesión y acepta adjuntos. (Parte de `session-04-live`, así que incluye además structured outputs +
+guardrails + cacheo semántico de la referencia del directo 04.)
+
+- **Sesiones y memoria** (`app/sessions/`): `POST /api/v1/sessions` crea una sesión (UUID) en un
+  **store en memoria del proceso**. `ConversationHistory` aplica **ventana deslizante** (`MAX_HISTORY_TURNS=6`
+  pares, preserva el system); `ProjectMetadata` guarda los **hechos** del proyecto (nombre, equipo,
+  tecnologías, alcance) **separados del historial**, así que sobreviven al truncado.
+- **Endpoint multi-turno**: `POST /api/v1/sessions/{id}/estimate` acepta **`multipart/form-data`**
+  (`transcript` + `attachments`) y devuelve la estimación estructurada. `GET /api/v1/sessions/{id}`
+  expone la memoria (lo usa el sidebar de Streamlit).
+- **Adjuntos — Camino B (extracción local)** (`app/attachments/extractor.py`): se extrae el texto con
+  **`pypdf`** (PDF) y **`python-docx`** (Word) y se concatena al transcript con separadores
+  `--- attachment: <archivo> ---`. *Por qué B y no A (multimodal):* independiente del proveedor, control
+  fino sobre qué entra al prompt, y prepara el terreno para el chunking de RAG del módulo 3.
+- **`project_metadata` — extractor LLM con Instructor** (`app/sessions/metadata_extractor.py`): tras cada
+  turno, una llamada con `instructor.from_litellm(response_model=ProjectMetadata)` extrae los hechos
+  nuevos y se **mergean** con los previos sin perderlos. El prompt incluye una constraint anti-alucinación
+  (*"nunca nombres una tecnología que no aparezca en la transcripción"*) + un ejemplo de formato.
+- **Cliente Streamlit conversacional**: crea la sesión al cargar, permite subir ficheros, muestra la
+  memoria en un panel y tiene botón "Nueva conversación".
+
+```bash
+uv run uvicorn app.main:app --reload        # API: POST /sessions, POST /sessions/{id}/estimate (/docs)
+uv run streamlit run streamlit_app.py       # UI conversacional → http://localhost:8501
+uv run pytest -q                            # 83 tests, sin API key (LLM/parsers mockeados)
+```
+
+> Lo que **no** entra (se hace en el directo de la sesión 5): memoria con anclas, tier dinámico y
+> Actor-Critic-Boss. Teoría y guía en `tutorial_aprendizaje/sesion-05/`.
+
+## Sesión 06 — stress test del CAG (rama `pre-session-06`)
+
+Instrumentación y medición: un evento `turn_observed` por turno y un harness autónomo
+`evals/stress/` (escenarios multi-turno, adjuntos calibrados, métricas de latencia/coste/memoria)
+que mide **dónde se rompe el CAG** antes de adoptar RAG. Deliverable: `evals/stress/REPORT.md` +
+`results.csv` (datos reales). Teoría y guía en `tutorial_aprendizaje/sesion-06/`.
+
+## Sesión 07 — embeddings y chunking (rama `pre-session-07`)
+
+Abre la parte práctica del **Módulo 3 (RAG)**: convierte los presupuestos históricos (JSON) en
+**vectores**. Módulo nuevo `app/embedding_pipeline/`:
+
+- **Chunker estructural** (`chunker.py`): `JSONStructuralChunker` — **un componente de presupuesto =
+  un chunk**, con un **header contextual** del presupuesto padre prepended al texto (proyecto,
+  sector, año, tecnología), metadata filtrable, `chunk_id = {budget_id}::{component_id}` y
+  `token_count` contado con **tiktoken**.
+- **Embedder** (`embedder.py`): `OpenAIEmbedder` sobre `text-embedding-3-small` (1536 dims), llamadas
+  en **batches de 100**, reintento exponencial ante `RateLimitError`, coste estimado ($0.02/1M tokens).
+- **Endpoint** `POST /embeddings/ingest` (`router.py`): recibe presupuestos, devuelve sus chunks
+  vectorizados + estadísticas (total_budgets/chunks/tokens/cost). Registrado bajo `/embeddings`.
+- **`similarity.py`** (coseno/dot/euclídea a mano, sin numpy) + **`scripts/compare.py`** (CLI de
+  similitud coseno entre dos textos) + **`data/budgets_sample.json`** (15 presupuestos, 37
+  componentes) + **`SANITY_CHECK.md`** (3 parejas con embeddings reales).
+
+```bash
+uv run uvicorn app.main:app --reload         # POST /embeddings/ingest (ver /docs)
+uv run python scripts/compare.py --text-a "OAuth 2.0 auth backend" --text-b "JWT authorization service"
+uv run pytest -q                             # 118 tests, sin API key (LLM/embeddings mockeados)
+```
+
+> Lo que **no** entra (es el directo / la sesión 8): otras estrategias de chunking, comparativa de
+> modelos, retrieval y **persistencia en pgvector**. Teoría y guía en `tutorial_aprendizaje/sesion-07/`.
+
+## Sesión 08 — persistencia vectorial: pgvector + búsqueda semántica (rama `pre-session-08`)
+
+Los vectores de la sesión 07 dejan de vivir en memoria y pasan a **PostgreSQL + pgvector**, con un
+endpoint de **búsqueda semántica**. Persistencia con SQLAlchemy 2.0 async + asyncpg, esquema
+gestionado con **Alembic**.
+
+- **Esquema (`alembic/versions/0001_initial_schema.py`, modelos en `app/embedding_pipeline/models_db.py`):**
+  dos tablas `documents` (1) ──< `chunks` (N) con `ON DELETE CASCADE`, extensión `vector`, índices
+  B-tree + **GIN** sobre `metadata`. `embedding vector(1536)`. **Sin índice vectorial** todavía.
+- **`POST /embeddings/ingest`** (refactorizado): recibe `{source_path, document_type, content}`,
+  trocea el presupuesto, embebe sus chunks y **persiste document + chunks en una transacción**.
+  Devuelve `{document_id, chunks_created, embedding_dimension, ingestion_time_ms}`. **409** si el
+  `source_path` ya existe (idempotencia).
+- **`POST /search`** (nuevo): embebe la query y devuelve los `k` chunks más cercanos por **distancia
+  coseno** (`<=>`), alineada con la operator class que tendrá el índice HNSW del directo.
+- **`query_examples.py`** (reemplaza a `compare.py`): 5 consultas contra `/search`. Salida real en
+  **`output_examples.txt`**.
+
+### Decisiones de esquema (justificación)
+
+- **Dos tablas, no una.** Un presupuesto produce N chunks; una sola tabla duplicaría la metadata del
+  documento en cada chunk y perdería integridad referencial. Con `documents` ──< `chunks` y
+  `ON DELETE CASCADE`, borrar un presupuesto borra sus chunks sin lógica aplicativa.
+- **`metadata` en JSONB, no columnas.** Lo estable y consultado de forma estructurada (tipo de
+  documento/chunk, fechas) va en columnas tipadas; lo variable/enriquecible (sector, tecnologías,
+  chunk_id, token_count) va en JSONB con índice **GIN** — flexible sin migrar el esquema cada vez.
+- **`cosine_distance` (`<=>`), no L2 ni inner product.** Los embeddings de OpenAI están normalizados,
+  así que coseno e inner product ordenan igual; usamos coseno por convención de la literatura RAG y
+  para que, al crear el índice HNSW en el directo con `vector_cosine_ops`, **operador e índice queden
+  alineados** (un desalineamiento haría que Postgres ignore el índice en silencio y caiga a seq scan).
+- **Sin índice vectorial todavía.** Deliberado: el directo mide la latencia del `/search` **sin**
+  índice (sequential scan), crea el índice HNSW y vuelve a medir. `EXPLAIN ANALYZE` sobre nuestro
+  corpus confirma hoy `Seq Scan on chunks` — el baseline correcto.
+
+```bash
+docker compose up -d postgres                # Postgres+pgvector en localhost:5433 (5432 suele estar ocupado)
+uv run alembic upgrade head                  # crea extensión + tablas + índices (no el vectorial)
+uv run uvicorn app.main:app --reload         # POST /embeddings/ingest y POST /search (ver /docs)
+uv run python query_examples.py              # 5 consultas de ejemplo (con el corpus ingestado)
+uv run pytest -q                             # 123 tests (repo test se salta si no hay Postgres)
+```
+
+> Lo que **no** entra (es el directo): índice HNSW/IVFFlat y su tuning, filtros por metadata en la
+> query, búsqueda híbrida (full-text + vector). Teoría y guía en `tutorial_aprendizaje/sesion-08/`.
+
 ## Arquitectura
 
 ```

@@ -1,0 +1,59 @@
+# output_examples.txt — salida REAL de query_examples.py (sesión 08)
+# Corpus: data/budgets_sample.json (15 presupuestos, 37 chunks) ingestado en Postgres+pgvector.
+# Embeddings reales text-embedding-3-small (1536d). Búsqueda por distancia coseno (<=>), sin índice (sequential scan).
+
+====================================================================================================
+QUERY [Componente directo conocido (sanity check)]
+  'REST API development with JWT authentication for financial sector'
+  search_time_ms=247  results=5
+   #     dist  chunk_id  chunk_type          content
+   1   0.4108         1  budget_component    [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+   2   0.4784         2  budget_component    [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+   3   0.5090         3  budget_component    [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+   4   0.6002         9  budget_component    [Project: Corporate treasury dashboard with real-time cash positions] [Client sector: finance | Year: 2024 | Main tech: 
+   5   0.6071         6  budget_component    [Project: Peer-to-peer lending platform with automated credit scoring] [Client sector: finance | Year: 2024 | Main tech:
+
+====================================================================================================
+QUERY [Reformulación semántica (mismo concepto, otro vocabulario)]
+  'secure backend service with token-based access control for banking applications'
+  search_time_ms=291  results=5
+   #     dist  chunk_id  chunk_type          content
+   1   0.4074         1  budget_component    [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+   2   0.4621         2  budget_component    [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+   3   0.4918         3  budget_component    [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+   4   0.5904         6  budget_component    [Project: Peer-to-peer lending platform with automated credit scoring] [Client sector: finance | Year: 2024 | Main tech:
+   5   0.6295        19  budget_component    [Project: B2B wholesale ordering portal with tiered pricing] [Client sector: ecommerce | Year: 2024 | Main tech: spring_
+
+====================================================================================================
+QUERY [Dominio distinto (no debería estar en el corpus)]
+  'mobile application for restaurant reservations'
+  search_time_ms=238  results=5
+   #     dist  chunk_id  chunk_type          content
+   1   0.5997        18  budget_component    [Project: Fashion retail mobile app with AR try-on] [Client sector: ecommerce | Year: 2024 | Main tech: react_native] Co
+   2   0.6168        14  budget_component    [Project: Grocery marketplace with slot-based delivery scheduling] [Client sector: ecommerce | Year: 2023 | Main tech: l
+   3   0.6256        21  budget_component    [Project: Patient portal with appointment booking and GDPR consent] [Client sector: healthcare | Year: 2024 | Main tech:
+   4   0.6349        15  budget_component    [Project: Grocery marketplace with slot-based delivery scheduling] [Client sector: ecommerce | Year: 2023 | Main tech: l
+   5   0.6385        16  budget_component    [Project: Grocery marketplace with slot-based delivery scheduling] [Client sector: ecommerce | Year: 2023 | Main tech: l
+
+====================================================================================================
+QUERY [Consulta ambigua (genérica, muchos matches parciales)]
+  'integration with external system'
+  search_time_ms=317  results=5
+   #     dist  chunk_id  chunk_type          content
+   1   0.6131        32  budget_component    [Project: Factory MES with real-time machine monitoring] [Client sector: industrial | Year: 2023 | Main tech: java] Comp
+   2   0.6292        20  budget_component    [Project: B2B wholesale ordering portal with tiered pricing] [Client sector: ecommerce | Year: 2024 | Main tech: spring_
+   3   0.6386        30  budget_component    [Project: Factory MES with real-time machine monitoring] [Client sector: industrial | Year: 2023 | Main tech: java] Comp
+   4   0.6402        10  budget_component    [Project: Corporate treasury dashboard with real-time cash positions] [Client sector: finance | Year: 2024 | Main tech: 
+   5   0.6426        33  budget_component    [Project: Smart agriculture IoT platform with irrigation control] [Client sector: industrial | Year: 2024 | Main tech: p
+
+====================================================================================================
+QUERY [Consulta muy específica (vocabulario técnico preciso)]
+  'migration from monolith to microservices architecture using Kubernetes'
+  search_time_ms=373  results=5
+   #     dist  chunk_id  chunk_type          content
+   1   0.6675        35  budget_component    [Project: Warehouse management system with route optimization] [Client sector: industrial | Year: 2024 | Main tech: go] 
+   2   0.6956         2  budget_component    [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+   3   0.7027         1  budget_component    [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+   4   0.7158         3  budget_component    [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+   5   0.7195        37  budget_component    [Project: Warehouse management system with route optimization] [Client sector: industrial | Year: 2024 | Main tech: go] 
+

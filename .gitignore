@@ -18,3 +18,9 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+
+# Stress test (sesión 06): PDFs sintéticos generados por build_pdfs.py.
+# Son binarios grandes y deterministas: se regeneran con el script, no se versionan.
+evals/stress/fixtures/*.pdf
+# Nota: evals/stress/results.csv SÍ se versiona como MUESTRA (modo mock), junto con
+# REPORT.md, para que el lector vea el formato del deliverable sin ejecutar nada.

@@ -3,7 +3,30 @@ Your job is to analyze the project description and produce a clear, realistic, a
 
 <output_format>{{ output_format }}</output_format>
 <detail_level>{{ detail_level }}</detail_level>
-<scope>{{ project_type | replace('_', ' ') }}</scope>
+<scope>
+This service only estimates SOFTWARE projects ({{ project_type | replace('_', ' ') }} and similar).
+If the description is clearly NOT a software project (e.g. building a house, catering, legal advice),
+it is out of scope: write a "summary" that starts exactly with "Out of scope:" followed by a short
+reason, set "confidence_pct" to 0, and return an empty list of phases. Do not invent an estimate.
+</scope>
+<project_metadata>
+{% if not project_metadata.is_empty() %}
+These facts about the project are already known from earlier in the conversation.
+Treat them as established context and stay consistent with them:
+{% if project_metadata.project_name %}
+- Project name: {{ project_metadata.project_name }}
+{% endif %}
+{% if project_metadata.assumed_team_size %}
+- Assumed team size: {{ project_metadata.assumed_team_size }} people
+{% endif %}
+{% if project_metadata.mentioned_technologies %}
+- Technologies mentioned: {{ project_metadata.mentioned_technologies | join(', ') }}
+{% endif %}
+{% if project_metadata.agreed_scope %}
+- Agreed scope so far: {{ project_metadata.agreed_scope }}
+{% endif %}
+{% endif %}
+</project_metadata>
 
 ## Output instructions
 

@@ -13,6 +13,19 @@
 # Parar y limpiar:   docker compose down            (conserva los datos)
 #                    docker compose down -v          (borra también el volumen)
 
+#
+# Postgres + pgvector para la persistencia vectorial (sesión 08). Levanta la BBDD:
+#   docker compose up -d postgres
+# Aplica las migraciones (en LOCAL, con la app por uv):
+#   DATABASE_URL=postgresql+asyncpg://estimator:estimator@localhost:5432/estimator \
+#     uv run alembic upgrade head
+# Arranca la app como siempre (uvicorn) y usa POST /embeddings/ingest y POST /search.
+#
+# Nota: corremos la app en LOCAL (uv) y solo Postgres en Docker — es el camino más
+# simple para ejecutar y entender el ejercicio. Por eso DATABASE_URL apunta a
+# localhost. (El enunciado plantea además un servicio ai_service containerizado;
+# nuestra convención del repo continuo ha sido siempre ejecutar la app con uv.)
+
 services:
   redis:
     image: redis:7-alpine
@@ -28,5 +41,28 @@ services:
       timeout: 3s
       retries: 5
 
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: estimador-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: estimator
+      POSTGRES_USER: estimator
+      POSTGRES_PASSWORD: estimator
+    ports:
+      # Publicamos en 5433 (no 5432) A PROPÓSITO: el 5432 suele estar ocupado por
+      # otro Postgres local (en esta máquina lo tiene el proyecto de microservicios).
+      # Dentro del contenedor sigue siendo 5432; fuera, localhost:5433. Por eso
+      # DATABASE_URL apunta a :5433. Cambia el mapeo si tu 5432 está libre.
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estimator -d estimator"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   redis_data:
+  postgres_data:
