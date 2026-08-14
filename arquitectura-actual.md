@@ -18,7 +18,7 @@
 ```mermaid
 flowchart TB
   FE["Frontend: Streamlit UI conversacional CAG (S05)"]
-  BN["Backend de negocio: no existe como servicio propio; el frontend llama directo al servicio IA"]
+  BN["Backend de negocio (p. ej. Rails): no implementado en este proyecto; el frontend llama directo al servicio IA"]
 
   subgraph IA["Servicio IA (FastAPI)"]
     direction LR
