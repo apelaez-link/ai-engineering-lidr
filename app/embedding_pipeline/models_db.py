@@ -25,9 +25,14 @@ from __future__ import annotations
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import BigInteger, Computed, DateTime, ForeignKey, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+# Config de text-search del corpus (inglés). DEBE coincidir con la de la migración
+# 0002 y con app.config.fulltext_language: si divergen, la columna generada y las
+# consultas usarían diccionarios distintos y el ranking léxico no cuadraría.
+FULLTEXT_CONFIG = "english"
 
 from app.db import Base
 
@@ -69,6 +74,19 @@ class Chunk(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(
         Vector(EMBEDDING_DIM), nullable=True
+    )
+    # Mitad LÉXICA de la búsqueda híbrida (sesión 10): tsvector DERIVADO de `content`.
+    # Computed(..., persisted=True) = columna GENERADA ALWAYS ... STORED: Postgres la
+    # recalcula sola y SQLAlchemy la excluye de INSERT/UPDATE (nunca intentamos escribir
+    # en ella). Así el mapeo ORM cuadra con la migración 0002 y con el create_all que
+    # usan los tests de repository. La consulta léxica la referencia para aprovechar el
+    # índice GIN. La marcamos deferred: no se carga salvo que se pida explícitamente
+    # (es un vector grande y nunca lo devolvemos al cliente).
+    content_tsv: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        Computed(f"to_tsvector('{FULLTEXT_CONFIG}', content)", persisted=True),
+        nullable=True,
+        deferred=True,
     )
     meta_: Mapped[dict] = mapped_column(
         "metadata", JSONB, server_default="{}", nullable=False

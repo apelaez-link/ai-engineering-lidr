@@ -33,8 +33,10 @@ dependencies = [
     # validado (con reintentos automáticos si la validación falla).
     "instructor>=1.5.0",
     # Cacheo semántico (sesión 04, lección "Cacheo semántico de respuestas").
-    # numpy se usa para la similitud coseno entre embeddings.
-    "numpy>=1.26.0",
+    # numpy se usa para la similitud coseno entre embeddings. Fijamos <2 porque la
+    # torch 2.2.2 (única con wheel para este Mac Intel, ver más abajo) se compiló
+    # contra numpy 1.x y peta al importarse con numpy 2.x.
+    "numpy>=1.26,<2",
     # Adjuntos (sesión 05, CAMINO B: extracción LOCAL de texto). pypdf parsea PDFs
     # y python-docx parsea Word, sin enviar el binario a ningún servicio externo.
     "pypdf>=4.0.0",
@@ -62,6 +64,24 @@ dependencies = [
     "asyncpg>=0.29",
     "pgvector>=0.3",
     "alembic>=1.13",
+    # Reranking con cross-encoder (sesión 10). sentence-transformers carga un modelo
+    # cross-encoder LOCAL (ms-marco-MiniLM) que puntúa pares (consulta, documento) para
+    # reordenar los candidatos recuperados (patrón recall-then-rerank). Arrastra torch,
+    # que es PESADO (cientos de MB) y solo se usa en el camino de reranking; el modelo
+    # se descarga de forma perezosa en la primera llamada, no al importar.
+    #
+    # Toda la pila ML va PINADA a la generación compatible con torch 2.2.2 (ver abajo):
+    #   sentence-transformers 3.x  -> API CrossEncoder estable, exige transformers 4.x
+    #   transformers 4.4x          -> las 5.x usan APIs de torch que la 2.2.2 no tiene
+    # Sin estos topes, uv coge las últimas (transformers 5.x, st 5.x) y peta al importar.
+    "sentence-transformers>=3.0,<4.0",
+    "transformers>=4.40,<4.45",
+    # OJO PLATAFORMA: esta máquina es un Mac Intel (x86_64). PyTorch dejó de publicar
+    # wheels de macOS Intel a partir de la 2.3.0 (la última con binario x86_64 macOS es
+    # la 2.2.2). Sin este pin, uv resuelve la torch más nueva (solo arm64/Linux/Win) y
+    # la instalación falla. Fijamos <2.3 para que resuelva la 2.2.2, que sí tiene wheel
+    # para este equipo (y también manylinux, así que CI sigue funcionando).
+    "torch>=2.0,<2.3",
 ]
 
 [dependency-groups]

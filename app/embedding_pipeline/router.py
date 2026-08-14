@@ -19,17 +19,21 @@ tests los sustituyan sin tocar la BBDD ni la API real.
 from __future__ import annotations
 
 import time
+from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db import get_session
 from app.logging_config import get_logger
 
 from . import repository
 from .chunker import JSONStructuralChunker
 from .embedder import EMBEDDING_DIMENSIONS, OpenAIEmbedder
+from .hybrid import hybrid_search
+from .reranker import CrossEncoderReranker
 from .schemas import (
     IngestRequest,
     IngestResponse,
@@ -50,6 +54,14 @@ def get_embedder() -> OpenAIEmbedder:
     """Dependencia: construye el embedder real (API key del .env). Los tests la
     sobreescriben con app.dependency_overrides[get_embedder]."""
     return OpenAIEmbedder()
+
+
+@lru_cache
+def get_reranker() -> CrossEncoderReranker:
+    """Dependencia: cross-encoder cacheado como singleton de proceso (el modelo se
+    carga perezosamente en la primera llamada a rerank, no aquí). Solo se instancia si
+    alguna petición pide rerank; las peticiones sin rerank no lo tocan."""
+    return CrossEncoderReranker(model_name=get_settings().rerank_model)
 
 
 @router.post("/embeddings/ingest", response_model=IngestResponse)
@@ -126,11 +138,24 @@ async def search(
     session: AsyncSession = Depends(get_session),
     embedder: OpenAIEmbedder = Depends(get_embedder),
 ) -> SearchResponse:
-    """Búsqueda semántica: embebe la query y devuelve los k chunks más cercanos.
+    """Búsqueda de chunks con recuperación configurable (sesión 10).
+
+    Cuatro combinaciones, elegibles por petición sin tocar código:
+      mode=vector | hybrid    ×    rerank=false | true
+
+    Patrón recall-then-rerank: si rerank está activo, la recuperación trae un pool
+    ANCHO de candidatos (retrieval_candidate_pool) y el cross-encoder los reordena al
+    top-k; si no, la recuperación devuelve directamente el top-k.
 
     La query se embebe con el MISMO modelo que la ingesta (text-embedding-3-small),
     condición necesaria para que las distancias sean comparables.
     """
+    settings = get_settings()
+    do_rerank = settings.rerank_enabled if request.rerank is None else request.rerank
+    pool = settings.retrieval_candidate_pool
+    # Anchura de recall: si vamos a reordenar, recuperamos `pool`; si no, solo los k.
+    recall_k = max(pool, request.k) if do_rerank else request.k
+
     started = time.perf_counter()
 
     try:
@@ -139,19 +164,39 @@ async def search(
         logger.error("search_embedding_failed", error=str(exc))
         raise HTTPException(status_code=500, detail="Error embebiendo la consulta.") from exc
 
-    rows = await repository.search_chunks(session, query_vector, request.k)
+    if request.mode == "hybrid":
+        rows = await hybrid_search(
+            session,
+            query_vector,
+            request.query,
+            k=recall_k,
+            candidate_pool=pool,
+            rrf_k=settings.rrf_k,
+            fulltext_config=settings.fulltext_language,
+        )
+    else:
+        rows = await repository.search_chunks(session, query_vector, recall_k)
+
+    if do_rerank:
+        reranker = get_reranker()
+        rows = reranker.rerank(request.query, rows, request.k)
+
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 
     logger.info(
         "search_completed",
         query_chars=len(request.query),
         k=request.k,
+        mode=request.mode,
+        reranked=do_rerank,
         results=len(rows),
         search_time_ms=elapsed_ms,
     )
     return SearchResponse(
         query=request.query,
         k=request.k,
+        mode=request.mode,
+        reranked=do_rerank,
         search_time_ms=elapsed_ms,
         results=[SearchResultItem(**row) for row in rows],
     )

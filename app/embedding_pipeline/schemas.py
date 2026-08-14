@@ -128,21 +128,43 @@ class DuplicateResponse(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    """Payload de entrada: una consulta en lenguaje natural y cuántos resultados."""
+    """Payload de entrada: consulta en lenguaje natural, cuántos resultados y CÓMO.
+
+    Los campos de la sesión 10 (mode, rerank) permiten activar búsqueda híbrida y
+    reranking POR PETICIÓN, sin tocar código. `rerank=None` hereda el default de la
+    config (RERANK_ENABLED); True/False lo fuerza para esta consulta.
+    """
 
     query: str
     k: int = Field(default=5, ge=1, le=50)
+    mode: Literal["vector", "hybrid"] = Field(
+        default="vector",
+        description="'vector' = solo semántica (sesión 08); 'hybrid' = vector + full-text con RRF.",
+    )
+    rerank: bool | None = Field(
+        default=None,
+        description="Reordenar con cross-encoder (recall-then-rerank). None = usar el default de config.",
+    )
 
 
 class SearchResultItem(BaseModel):
-    """Un chunk recuperado, con su distancia coseno a la consulta."""
+    """Un chunk recuperado. Los scores presentes dependen del modo:
+
+    - distance: distancia coseno (rama vectorial).
+    - rank: ts_rank_cd (rama léxica, solo si el chunk vino de ahí en híbrida).
+    - rrf_score: score de fusión (modo híbrido).
+    - rerank_score: score del cross-encoder (si rerank activo).
+    """
 
     chunk_id: int
     document_id: int
     chunk_type: str
     content: str
-    distance: float
     metadata: dict[str, Any] = Field(default_factory=dict)
+    distance: float | None = None
+    rank: float | None = None
+    rrf_score: float | None = None
+    rerank_score: float | None = None
 
 
 class SearchResponse(BaseModel):
@@ -150,5 +172,7 @@ class SearchResponse(BaseModel):
 
     query: str
     k: int
+    mode: str
+    reranked: bool
     search_time_ms: int
     results: list[SearchResultItem]

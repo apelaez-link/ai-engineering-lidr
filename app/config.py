@@ -89,6 +89,21 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://estimator:estimator@localhost:5433/estimator"
     )
 
+    # ── Recuperación avanzada (sesión 10): híbrida + reranking ──────────────
+    # Idioma de la config de full-text search (to_tsvector/plainto_tsquery). DEBE
+    # coincidir con la migración 0002 y models_db.FULLTEXT_CONFIG. Nuestro corpus está
+    # en inglés (el enunciado usa 'spanish' para su dataset en español).
+    fulltext_language: str = "english"
+    # Constante k de Reciprocal Rank Fusion (amortiguación de las primeras posiciones).
+    rrf_k: int = 60
+    # Anchura de recall: candidatos que pide cada rama antes de fusionar/reordenar. Es
+    # la "N" del recall-then-rerank (recupera N amplio, reordena a k pequeño).
+    retrieval_candidate_pool: int = 50
+    # Reranking con cross-encoder. Apagado por defecto (arrastra torch y añade latencia);
+    # se enciende por env RERANK_ENABLED=true o por petición, SIN tocar código.
+    rerank_enabled: bool = False
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
     # ── Cacheo SEMÁNTICO (sesión 04) ────────────────────────────────────────
     # A diferencia del exact-match, el cacheo semántico captura reformulaciones:
     # dos descripciones distintas con la MISMA intención comparten respuesta.
