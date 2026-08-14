@@ -23,6 +23,7 @@ from app.db import Base
 from app.embedding_pipeline.models_db import Document
 from app.embedding_pipeline.repository import (
     get_document_id_by_source,
+    lexical_search_chunks,
     persist_document,
     search_chunks,
 )
@@ -104,6 +105,62 @@ async def _run_roundtrip() -> dict:
     return out
 
 
+_LEX_SOURCE = "test://repository/BUD-TEST-LEX.json"
+
+
+async def _run_lexical() -> dict:
+    """Persiste dos chunks de texto distinto y prueba la búsqueda LÉXICA (sesión 10)."""
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    out: dict = {}
+    try:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                await conn.run_sync(Base.metadata.create_all)
+        except Exception as exc:  # noqa: BLE001
+            raise _DBUnavailable(str(exc)) from exc
+
+        async with maker() as session:
+            await session.execute(delete(Document).where(Document.source_path == _LEX_SOURCE))
+            await session.commit()
+
+        async with maker() as session:
+            await persist_document(
+                session,
+                source_path=_LEX_SOURCE,
+                document_type="historical_budget",
+                document_metadata={"budget_id": "BUD-TEST-LEX"},
+                embedded_chunks=[
+                    _embedded(
+                        "BUD-TEST-LEX::A",
+                        "Secure OAuth authentication backend for banking login",
+                        _vec(1.0, 0.0),
+                    ),
+                    _embedded(
+                        "BUD-TEST-LEX::B",
+                        "Warehouse route optimization and delivery scheduling",
+                        _vec(0.0, 1.0),
+                    ),
+                ],
+            )
+
+        async with maker() as session:
+            # La consulta comparte SOLO 'oauth'/'banking' con el chunk A y ningún término
+            # con el B. Con AND (plainto) no casaría nada; con OR (nuestro fix) casa A.
+            out["results"] = await lexical_search_chunks(
+                session, "oauth banking sign-in flow", k=5
+            )
+
+        async with maker() as session:
+            await session.execute(delete(Document).where(Document.source_path == _LEX_SOURCE))
+            await session.commit()
+    finally:
+        await engine.dispose()
+    return out
+
+
 def test_repository_roundtrip() -> None:
     try:
         out = asyncio.run(_run_roundtrip())
@@ -122,3 +179,23 @@ def test_repository_roundtrip() -> None:
     top = results[0]
     assert isinstance(top["distance"], float)
     assert "auth backend" in top["content"] or top["document_id"] == out["doc_id"]
+
+
+def test_lexical_search_or_matches_partial_terms() -> None:
+    """La búsqueda léxica casa por CUALQUIER término (OR), no exige todos (regresión S10).
+
+    Sin el fix de OR (plainto_tsquery une con AND), una consulta que no comparte TODOS
+    los términos con ningún chunk devolvería vacío y la híbrida degeneraría a la vectorial.
+    """
+    try:
+        out = asyncio.run(_run_lexical())
+    except _DBUnavailable as exc:
+        pytest.skip(f"Postgres del proyecto no disponible en localhost:5433 ({exc})")
+
+    results = out["results"]
+    assert results, "la búsqueda léxica no debería devolver vacío (matching OR)"
+    # El chunk de OAuth/banking casa; el de almacén no comparte términos.
+    contents = " ".join(r["content"] for r in results)
+    assert "OAuth" in contents
+    assert all(isinstance(r["rank"], float) for r in results)
+    assert "Warehouse route optimization" not in results[0]["content"]

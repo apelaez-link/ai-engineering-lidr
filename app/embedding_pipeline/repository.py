@@ -10,11 +10,32 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models_db import Chunk, Document
+from .models_db import FULLTEXT_CONFIG, Chunk, Document
 from .schemas import EmbeddedChunk
+
+
+def _or_tsquery(config: str, query_text: str):
+    """Construye una tsquery OR a partir de una consulta en lenguaje natural.
+
+    plainto_tsquery une los términos con AND ('mobile & banking & oauth'), así que una
+    frase larga solo casa con un chunk que contenga TODAS las palabras — en la práctica,
+    ninguno, y la búsqueda léxica devuelve vacío. Para recuperación por palabras clave
+    queremos lo contrario: que casen los chunks con CUALQUIER término. Convertimos la
+    salida de plainto (ya normalizada: stemming + stop-words) cambiando ' & ' por ' | '.
+    Así reutilizamos el análisis léxico correcto de Postgres y obtenemos matching OR,
+    que sigue aprovechando el índice GIN vía el operador @@.
+    """
+    # Nota: la lección de búsqueda híbrida del curso usa websearch_to_tsquery (sintaxis
+    # natural de buscador). También une los términos con AND por defecto, así que sobre
+    # nuestros chunks cortos + consultas largas dejaría la léxica casi vacía; por eso
+    # partimos de plainto_tsquery y forzamos OR. Misma normalización léxica, matching más
+    # permisivo, y sigue usando el índice GIN vía @@.
+    plain_text = cast(func.plainto_tsquery(config, query_text), Text)
+    or_text = func.replace(plain_text, " & ", " | ")
+    return func.to_tsquery(config, or_text)
 
 
 async def get_document_id_by_source(
@@ -108,6 +129,54 @@ async def search_chunks(
             "chunk_type": row.chunk_type,
             "content": row.content,
             "distance": float(row.distance),
+            "metadata": row.meta_,
+        }
+        for row in result
+    ]
+
+
+async def lexical_search_chunks(
+    session: AsyncSession, query_text: str, k: int, config: str = FULLTEXT_CONFIG
+) -> list[dict[str, Any]]:
+    """Mitad LÉXICA de la búsqueda híbrida (sesión 10): full-text search de Postgres.
+
+    Complementa a search_chunks (semántica). Donde el vector captura significado
+    ("banca móvil" ~ "mobile banking"), el full-text captura coincidencia EXACTA de
+    términos (nombres propios, siglas, IDs, tecnologías) que el embedding a veces diluye.
+
+    - _or_tsquery(config, q): normaliza la consulta con el análisis léxico de Postgres
+      (mismo stemming/stop-words que la columna generada) pero uniendo los términos con
+      OR, para que casen los chunks con CUALQUIER término (ver la función para el porqué).
+    - `content_tsv @@ tsquery`: filtro de match (usa el índice GIN de la migración 0002).
+    - ts_rank_cd: ranking por densidad de cobertura (cuántos términos casan y lo juntos
+      que aparecen). Ordenamos DESC y devolvemos el `rank` como score léxico.
+
+    Devuelve la MISMA forma de dict que search_chunks (con `rank` en vez de `distance`)
+    para que la fusión RRF trate ambas listas de forma homogénea.
+    """
+    tsquery = _or_tsquery(config, query_text)
+    rank = func.ts_rank_cd(Chunk.content_tsv, tsquery).label("rank")
+    stmt = (
+        select(
+            Chunk.id,
+            Chunk.document_id,
+            Chunk.chunk_type,
+            Chunk.content,
+            Chunk.meta_,
+            rank,
+        )
+        .where(Chunk.content_tsv.op("@@")(tsquery))
+        .order_by(rank.desc())
+        .limit(k)
+    )
+    result = await session.execute(stmt)
+    return [
+        {
+            "chunk_id": row.id,
+            "document_id": row.document_id,
+            "chunk_type": row.chunk_type,
+            "content": row.content,
+            "rank": float(row.rank),
             "metadata": row.meta_,
         }
         for row in result

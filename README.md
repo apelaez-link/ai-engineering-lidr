@@ -133,6 +133,46 @@ uv run pytest -q                             # 123 tests (repo test se salta si 
 > Lo que **no** entra (es el directo): índice HNSW/IVFFlat y su tuning, filtros por metadata en la
 > query, búsqueda híbrida (full-text + vector). Teoría y guía en `tutorial_aprendizaje/sesion-08/`.
 
+## Sesión 09 — diagnóstico arquitectónico del RAG actual (rama `session-09/pre-work`)
+
+Sesión de **razonamiento**, no de código: un diagnóstico ([`arquitectura-actual.md`](arquitectura-actual.md))
+del sistema de recuperación actual sobre una traza real de una transcripción ambigua —los 4 estadios
+del RAG (Query → Retrieval → Augmentation → Generation), 5 fallos concretos y un diagrama de evolución.
+La conclusión que arrastra a la sesión 10: **la recuperación domina**.
+
+## Sesión 10 — recuperación avanzada: híbrida + reranking (rama `session-10/pre-work`)
+
+Cierra lo que la sesión 08 dejaba para el futuro: **búsqueda híbrida** (full-text + vector) y
+**reranking**. Pero el foco real es **medir si valen la pena**.
+
+- **Full-text** (`alembic/versions/0002_fulltext_tsvector.py`): columna **generada** `content_tsv`
+  (`tsvector`, config `english`) + índice **GIN** sobre `chunks`. Búsqueda léxica en
+  `repository.lexical_search_chunks` con matching **OR** (`_or_tsquery`) y ranking `ts_rank_cd`.
+- **Híbrida** (`app/embedding_pipeline/hybrid.py`): fusiona la lista vectorial y la léxica con
+  **Reciprocal Rank Fusion** (RRF, `k=60`). `reciprocal_rank_fusion()` es pura y testeable.
+- **Reranking** (`app/embedding_pipeline/reranker.py`): `CrossEncoderReranker` (cross-encoder
+  `ms-marco-MiniLM`, carga perezosa, *scorer* inyectable) con patrón **recall-then-rerank** (top-15 → top-5).
+- **`POST /search`** ahora acepta `mode: vector|hybrid` y `rerank: true|false` — **4 configs sin tocar código**.
+- **Medición** (`evals/retrieval/`): golden set de 5 consultas anotadas + **precisión@5** + latencia,
+  sobre las 4 configuraciones (A/B/C/D). Deliverable: [`evals/retrieval/REPORT.md`](evals/retrieval/REPORT.md)
+  + `results.csv` (datos reales).
+
+**Resultado (corpus de 37 chunks):** la vectorial sola (A) ya está en el techo (**P@5=0.92 @ 1.7 ms**);
+la híbrida sin rerank **empeora** (0.80, mete ruido léxico); el rerank la rescata (0.92) pero **cuesta
+~14× latencia** (24 ms) sin ganar precisión sobre A. **Conclusión: en este corpus gana A**; híbrida y
+rerank empezarán a pagar cuando el corpus crezca y se ensucie. *Medir antes de adoptar.* Guía completa
+con la tabla y la interpretación en `tutorial_aprendizaje/sesion-10/`.
+
+```bash
+docker compose up -d postgres && uv run alembic upgrade head    # incluye la migración 0002 (tsvector + GIN)
+DATABASE_URL=…@localhost:5433/estimator uv run python -m evals.retrieval.run   # mide A/B/C/D (real)
+uv run pytest -q                                                # 142 tests (los de BBDD se saltan sin Postgres)
+```
+
+> **Nota (Opción B):** el enunciado asumía el pipeline RAG de la sesión 9-live y un cross-encoder ya
+> provisto, y sugería un fork del repo del profesor. Lo hicimos sobre **nuestro repo continuo** y
+> **nuestros datos** (desviación consciente); detalle en `tutorial_aprendizaje/sesion-10/README.md` §6.
+
 ## Arquitectura
 
 ```
