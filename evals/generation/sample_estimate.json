@@ -1,0 +1,119 @@
+{
+  "query_id": "Q1",
+  "estimate": {
+    "line_items": [
+      {
+        "component": "Cart and Checkout",
+        "hours": 160.0,
+        "rationale": "Estimated hours based on historical data for a similar component.",
+        "grounded": true,
+        "sources": [
+          {
+            "chunk_id": "BUD-2024-045::CART-002",
+            "document_id": "BUD-2024-045",
+            "evidence": "Estimated hours: 160"
+          }
+        ]
+      },
+      {
+        "component": "Product Catalog",
+        "hours": 180.0,
+        "rationale": "Estimated hours based on historical data for a similar component.",
+        "grounded": true,
+        "sources": [
+          {
+            "chunk_id": "BUD-2024-045::CAT-001",
+            "document_id": "BUD-2024-045",
+            "evidence": "Estimated hours: 180"
+          }
+        ]
+      },
+      {
+        "component": "Search Functionality",
+        "hours": 0.0,
+        "rationale": "insufficient historical data",
+        "grounded": false,
+        "sources": []
+      },
+      {
+        "component": "Shopping Cart",
+        "hours": 0.0,
+        "rationale": "insufficient historical data",
+        "grounded": false,
+        "sources": []
+      },
+      {
+        "component": "Checkout Process",
+        "hours": 0.0,
+        "rationale": "insufficient historical data",
+        "grounded": false,
+        "sources": []
+      },
+      {
+        "component": "Product Recommendations",
+        "hours": 100.0,
+        "rationale": "Estimated hours based on historical data for a similar component.",
+        "grounded": true,
+        "sources": [
+          {
+            "chunk_id": "BUD-2024-045::REC-003",
+            "document_id": "BUD-2024-045",
+            "evidence": "Estimated hours: 100"
+          }
+        ]
+      }
+    ],
+    "total_hours": 440.0,
+    "summary": "The estimate for the online e-commerce storefront includes components for Cart and Checkout, Product Catalog, and Product Recommendations, totaling 440 hours. However, there is insufficient historical data to estimate the hours for Search Functionality, Shopping Cart, and Checkout Process."
+  },
+  "citation_report": {
+    "total_lines": 6,
+    "grounded": 3,
+    "dangling": 0,
+    "insufficient": 3,
+    "results": [
+      {
+        "component": "Cart and Checkout",
+        "status": "grounded",
+        "cited_chunk_ids": [
+          "BUD-2024-045::CART-002"
+        ],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Product Catalog",
+        "status": "grounded",
+        "cited_chunk_ids": [
+          "BUD-2024-045::CAT-001"
+        ],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Search Functionality",
+        "status": "insufficient",
+        "cited_chunk_ids": [],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Shopping Cart",
+        "status": "insufficient",
+        "cited_chunk_ids": [],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Checkout Process",
+        "status": "insufficient",
+        "cited_chunk_ids": [],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Product Recommendations",
+        "status": "grounded",
+        "cited_chunk_ids": [
+          "BUD-2024-045::REC-003"
+        ],
+        "dangling_chunk_ids": []
+      }
+    ]
+  }
+}

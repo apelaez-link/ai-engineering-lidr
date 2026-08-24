@@ -173,6 +173,39 @@ uv run pytest -q                                                # 142 tests (los
 > provisto, y sugería un fork del repo del profesor. Lo hicimos sobre **nuestro repo continuo** y
 > **nuestros datos** (desviación consciente); detalle en `tutorial_aprendizaje/sesion-10/README.md` §6.
 
+## Sesión 11 — RAG avanzado: generación y calidad (rama `session-11/pre-work`)
+
+Cierra el RAG por el lado del **generador**. Como la S9 la hicimos como diagnóstico, primero
+**construimos el generador que faltaba** (Opción B) y sobre él montamos las dos partes del ejercicio.
+
+- **Generador** (`app/generation/`): recupera contexto (retrieval S10) → genera una **estimación
+  estructurada** con Instructor (`response_model=Estimate`) → verifica. `pipeline.py` orquesta
+  recuperar → generar → verificar.
+- **Citación verificable por línea** (`schemas.py` + `verify.py`): cada `EstimateLineItem` cita sus
+  `SourceReference` (chunk_id + document_id + **evidencia verbatim**); regla de integridad
+  grounded/sources; `verify_citations()` marca **grounded / dangling / insufficient** y loguea las
+  colgantes por `request_id`.
+- **Evaluación RAGAS** (`evals/generation/`): golden set de la S10 **enriquecido con `ground_truth`**;
+  las 4 métricas (faithfulness, answer_relevancy, context_precision, context_recall) con juez
+  `gpt-4o-mini`. Deliverable: [`evals/generation/REPORT.md`](evals/generation/REPORT.md) +
+  `results.csv` + `sample_estimate.json`.
+
+**Resultado (5 consultas, datos reales):** citación sólida (**0 colgantes**, evidencia verbatim);
+RAGAS media **faithfulness 0.38 · answer_relevancy 0.42 · context_precision 0.91 · context_recall
+0.63**. Hallazgo: la `faithfulness` baja **no** contradice la citación limpia — RAGAS evalúa todo el
+texto (resumen, total, líneas "insufficient"), afirmaciones sintetizadas que no están verbatim en el
+contexto; mide algo distinto de `verify_citations`. Baseline para extender en el directo con **content
+augmentation**. Detalle y "nota sobre los números" en `tutorial_aprendizaje/sesion-11/`.
+
+```bash
+docker compose up -d postgres && uv run alembic upgrade head
+DATABASE_URL=…@localhost:5433/estimator uv run python -m evals.generation.run   # generación citada + RAGAS
+uv run pytest -q                                                                # 155 tests
+```
+
+> **Nota (Opción B):** el generador que el enunciado daba por hecho (S9-live) lo construimos aquí,
+> sobre nuestro repo y datos; usamos Instructor en vez de la Responses API (mismo JSON estricto).
+
 ## Arquitectura
 
 ```
