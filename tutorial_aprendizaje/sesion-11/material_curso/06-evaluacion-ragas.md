@@ -72,8 +72,9 @@ mucho entre versiones** (nombres de columnas, clases de dataset, cómo se pasan 
 Es **exactamente lo que montamos**: golden set (el de la S10 + `ground_truth`), `evals/
 generation/run.py` con las 4 métricas y juez gpt-4o-mini → tabla comparable. Aprendizajes
 vividos: fijamos **ragas 0.4.3** (la API cambia), y hay que llamar a `evaluate()` **fuera** de
-un bucle asyncio. Nuestra lectura de los números (la "nota"): **faithfulness 0.38 con
-context_precision 0.91** = el diagnóstico "problema de generación, no de recuperación" de esta
-lección — el contexto es bueno (precision alta) pero el texto de respuesta (resumen/total/
-líneas insufficient) no está verbatim en él. Y nos falta cubrir el golden set con más casos
+un bucle asyncio. Los números **varían entre runs** (juez LLM no determinista) → los leemos como
+tendencias, tal y como avisa esta lección. Nuestra lectura (la "nota"): **faithfulness baja (~0.3)
+con context_precision alta (~0.9)** = el diagnóstico "problema de generación, no de recuperación"
+— el contexto es bueno (precision alta) pero el texto de respuesta (resumen/total/líneas
+insufficient) no está verbatim en él. Y nos falta cubrir el golden set con más casos
 adversariales/de abstención, que la lección marca como imprescindibles.

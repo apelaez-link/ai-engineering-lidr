@@ -191,11 +191,12 @@ Cierra el RAG por el lado del **generador**. Como la S9 la hicimos como diagnós
   `results.csv` + `sample_estimate.json`.
 
 **Resultado (5 consultas, datos reales):** citación sólida (**0 colgantes**, evidencia verbatim);
-RAGAS media **faithfulness 0.38 · answer_relevancy 0.42 · context_precision 0.91 · context_recall
-0.63**. Hallazgo: la `faithfulness` baja **no** contradice la citación limpia — RAGAS evalúa todo el
-texto (resumen, total, líneas "insufficient"), afirmaciones sintetizadas que no están verbatim en el
-contexto; mide algo distinto de `verify_citations`. Baseline para extender en el directo con **content
-augmentation**. Detalle y "nota sobre los números" en `tutorial_aprendizaje/sesion-11/`.
+RAGAS media aprox. **faithfulness ~0.3 · answer_relevancy ~0.4 · context_precision ~0.9 · context_recall
+~0.8** (varían por run — juez LLM no determinista; ver `evals/generation/REPORT.md`). Hallazgo: la
+`faithfulness` baja **no** contradice la citación limpia — RAGAS evalúa todo el texto (resumen, total,
+líneas "insufficient"), afirmaciones sintetizadas que no están verbatim en el contexto; mide algo
+distinto de `verify_citations`. Baseline para extender en el directo con **content augmentation**.
+Detalle y "nota sobre los números" en `tutorial_aprendizaje/sesion-11/`.
 
 ```bash
 docker compose up -d postgres && uv run alembic upgrade head

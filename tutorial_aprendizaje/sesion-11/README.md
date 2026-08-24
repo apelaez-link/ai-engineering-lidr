@@ -75,32 +75,40 @@ contexts, ground_truth) y calculamos las 4 métricas con juez `gpt-4o-mini` + em
 
 | Consulta | faithfulness | answer_relevancy | context_precision | context_recall |
 |----------|-------------:|-----------------:|------------------:|---------------:|
-| Q1 | 0.556 | 0.000 | 0.810 | 0.667 |
-| Q2 | 0.462 | 0.420 | 0.810 | 0.500 |
-| Q3 | 0.600 | 0.545 | 1.000 | 0.500 |
-| Q4 | 0.300 | 0.615 | 0.950 | 1.000 |
-| Q5 | 0.000 | 0.511 | 1.000 | 0.500 |
-| **media** | **0.383** | **0.418** | **0.914** | **0.633** |
+| Q1 | 0.353 | 0.000 | 0.810 | 0.667 |
+| Q2 | 0.538 | 0.406 | 0.804 | 1.000 |
+| Q3 | 0.385 | 0.480 | 1.000 | 0.500 |
+| Q4 | 0.300 | 0.611 | 0.950 | 1.000 |
+| Q5 | 0.000 | 0.511 | 1.000 | 1.000 |
+| **media** | **0.315** | **0.402** | **0.913** | **0.833** |
 
-Verificación de citaciones: 5/5 consultas sin colgantes (Q2 y Q3 100% grounded; Q1/Q4/Q5 con
-alguna línea marcada "insufficient" — el sistema reconoce lo que no puede fundamentar).
+> ⚠️ **Estos números varían entre ejecuciones**: RAGAS usa un LLM como juez (no determinista) y
+> la generación tiene algo de aleatoriedad. Léelos como **tendencias y comparaciones**, no como
+> notas absolutas (lo dice la propia lección de RAGAS). El artefacto de verdad es
+> [`evals/generation/REPORT.md`](../../evals/generation/REPORT.md), regenerable con `run.py`.
+> Lo **estable** entre runs: `context_precision` alta (~0.9), `faithfulness` baja (~0.3) y
+> **0 citaciones colgantes**.
+
+Verificación de citaciones: 5/5 consultas **sin colgantes** en todos los runs; las líneas
+"insufficient" (grounded=false) varían por consulta y run — el sistema reconoce lo que no puede
+fundamentar en vez de inventar horas.
 
 ---
 
 ## 3. Nota sobre los números más llamativos (entregable)
 
-**Lo que más chirría: `faithfulness` media 0,38 pese a 0 citaciones colgantes.** No es una
+**Lo que más chirría: `faithfulness` baja (~0,3) pese a 0 citaciones colgantes.** No es una
 contradicción — es que **RAGAS y nuestra verificación miden cosas distintas**. `verify_citations`
 comprueba la **estructura** (que cada `chunk_id` citado exista y la evidencia sea verbatim), y
-ahí salimos limpios. RAGAS `faithfulness` evalúa **todo el texto de la respuesta** —incluyendo
-el **resumen ejecutivo**, el **total sumado** y las líneas **"insufficient data"**— y esas
-afirmaciones **sintetizadas/meta no aparecen literalmente en ningún chunk**, así que las
-penaliza. Dicho de otro modo: RAGAS castiga la síntesis legítima y la **honestidad de marcar
-huecos**. `context_precision` alta (0,91) confirma lo de la S10 (el retrieval trae lo relevante
-arriba); `context_recall` media (0,63) dice que el `ground_truth` menciona componentes que no
-siempre entran en el contexto (recall del retrieval). Y ojo con `answer_relevancy` (Q1=0,0):
-RAGAS avisó *"LLM returned 1 generation instead of 3"*, así que esa métrica quedó **degradada y
-hay que leerla con cautela**.
+ahí salimos limpios en todos los runs. RAGAS `faithfulness` evalúa **todo el texto de la
+respuesta** —incluyendo el **resumen ejecutivo**, el **total sumado** y las líneas **"insufficient
+data"**— y esas afirmaciones **sintetizadas/meta no aparecen literalmente en ningún chunk**, así
+que las penaliza. Dicho de otro modo: RAGAS castiga la síntesis legítima y la **honestidad de
+marcar huecos** — que es exactamente el diagnóstico "problema de generación, no de recuperación"
+de la lección de RAGAS (`context_precision` alta ~0,9 confirma que el retrieval trae lo relevante
+arriba, como en la S10). Y ojo con `answer_relevancy` (Q1=0,0 de forma recurrente): RAGAS avisó
+*"LLM returned 1 generation instead of 3"*, así que esa métrica quedó **degradada y hay que
+leerla con cautela**.
 
 **Direcciones para el directo** (esto es el baseline que se extiende en vivo): **content
 augmentation** (meter en el contexto lo que hoy vive en la metadata y ordenar/limpiar antes de
