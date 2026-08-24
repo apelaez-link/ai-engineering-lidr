@@ -1,0 +1,187 @@
+{
+  "query_id": "Q1",
+  "estimate": {
+    "line_items": [
+      {
+        "component": "Cart and checkout",
+        "hours": 160.0,
+        "rationale": "Estimated hours based on historical data for a similar component.",
+        "grounded": true,
+        "sources": [
+          {
+            "chunk_id": "BUD-2024-045::CART-002",
+            "document_id": "BUD-2024-045",
+            "evidence": "Estimated hours: 160"
+          }
+        ]
+      },
+      {
+        "component": "Product catalog",
+        "hours": 180.0,
+        "rationale": "Estimated hours based on historical data for a similar component.",
+        "grounded": true,
+        "sources": [
+          {
+            "chunk_id": "BUD-2024-045::CAT-001",
+            "document_id": "BUD-2024-045",
+            "evidence": "Estimated hours: 180"
+          }
+        ]
+      },
+      {
+        "component": "Search functionality",
+        "hours": 0.0,
+        "rationale": "insufficient historical data",
+        "grounded": false,
+        "sources": []
+      },
+      {
+        "component": "Shopping cart",
+        "hours": 0.0,
+        "rationale": "insufficient historical data",
+        "grounded": false,
+        "sources": []
+      },
+      {
+        "component": "Checkout process",
+        "hours": 0.0,
+        "rationale": "insufficient historical data",
+        "grounded": false,
+        "sources": []
+      },
+      {
+        "component": "Product recommendations",
+        "hours": 100.0,
+        "rationale": "Estimated hours based on historical data for a similar component.",
+        "grounded": true,
+        "sources": [
+          {
+            "chunk_id": "BUD-2024-045::REC-003",
+            "document_id": "BUD-2024-045",
+            "evidence": "Estimated hours: 100"
+          }
+        ]
+      },
+      {
+        "component": "Payment orchestration",
+        "hours": 130.0,
+        "rationale": "Estimated hours based on historical data for a similar component.",
+        "grounded": true,
+        "sources": [
+          {
+            "chunk_id": "BUD-2023-131::PAY-002",
+            "document_id": "BUD-2023-131",
+            "evidence": "Estimated hours: 130"
+          }
+        ]
+      },
+      {
+        "component": "Promotions and coupons",
+        "hours": 120.0,
+        "rationale": "Estimated hours based on historical data for a similar component.",
+        "grounded": true,
+        "sources": [
+          {
+            "chunk_id": "BUD-2023-131::PROMO-003",
+            "document_id": "BUD-2023-131",
+            "evidence": "Estimated hours: 120"
+          }
+        ]
+      },
+      {
+        "component": "Tiered pricing engine",
+        "hours": 0.0,
+        "rationale": "insufficient historical data",
+        "grounded": false,
+        "sources": []
+      },
+      {
+        "component": "Delivery slot scheduler",
+        "hours": 0.0,
+        "rationale": "insufficient historical data",
+        "grounded": false,
+        "sources": []
+      }
+    ],
+    "total_hours": 690.0,
+    "summary": "The estimate for the online e-commerce storefront includes components for cart and checkout, product catalog, product recommendations, payment orchestration, and promotions and coupons, totaling 690 hours. Several components lack sufficient historical data for estimation."
+  },
+  "citation_report": {
+    "total_lines": 10,
+    "grounded": 5,
+    "dangling": 0,
+    "insufficient": 5,
+    "results": [
+      {
+        "component": "Cart and checkout",
+        "status": "grounded",
+        "cited_chunk_ids": [
+          "BUD-2024-045::CART-002"
+        ],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Product catalog",
+        "status": "grounded",
+        "cited_chunk_ids": [
+          "BUD-2024-045::CAT-001"
+        ],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Search functionality",
+        "status": "insufficient",
+        "cited_chunk_ids": [],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Shopping cart",
+        "status": "insufficient",
+        "cited_chunk_ids": [],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Checkout process",
+        "status": "insufficient",
+        "cited_chunk_ids": [],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Product recommendations",
+        "status": "grounded",
+        "cited_chunk_ids": [
+          "BUD-2024-045::REC-003"
+        ],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Payment orchestration",
+        "status": "grounded",
+        "cited_chunk_ids": [
+          "BUD-2023-131::PAY-002"
+        ],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Promotions and coupons",
+        "status": "grounded",
+        "cited_chunk_ids": [
+          "BUD-2023-131::PROMO-003"
+        ],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Tiered pricing engine",
+        "status": "insufficient",
+        "cited_chunk_ids": [],
+        "dangling_chunk_ids": []
+      },
+      {
+        "component": "Delivery slot scheduler",
+        "status": "insufficient",
+        "cited_chunk_ids": [],
+        "dangling_chunk_ids": []
+      }
+    ]
+  }
+}
