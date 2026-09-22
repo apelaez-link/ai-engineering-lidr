@@ -14,6 +14,7 @@ from app.agent import router as agent
 from app.embedding_pipeline import router as embeddings
 from app.graph import router as graph
 from app.logging_config import configure_logging, get_logger
+from app.multiagent import router as multiagent
 from app.routers import estimations, sessions
 
 # Configuramos structlog ANTES de crear la app, para que cualquier log de arranque
@@ -63,6 +64,10 @@ app.include_router(agent.router)
 # Orquestación con LangGraph (sesión 13): el flujo de estimación como grafo de estados.
 # -> POST /graph/estimate (transcripción -> estimación + estado, con checkpointer + Logfire).
 app.include_router(graph.router)
+
+# Sistema multi-agente (sesión 14): supervisor + workers con privilegio mínimo + HITL.
+# -> POST /multiagent/estimate y POST /multiagent/resume/{thread_id}.
+app.include_router(multiagent.router)
 
 # Ficheros estáticos: demo de streaming SSE en HTML puro (sin Streamlit).
 # Disponible en http://localhost:8000/static/sse_demo.html

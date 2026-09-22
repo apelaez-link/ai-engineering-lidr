@@ -145,6 +145,12 @@ class Settings(BaseSettings):
     # la nube de Logfire; sin token corre en local sin enviar nada.
     logfire_enabled: bool = True
 
+    # ── Sistema multi-agente (sesión 14) ────────────────────────────────────
+    # Umbral de horas por encima del cual una estimación NO se aprueba sola: pasa por
+    # revisión humana (human-in-the-loop con interrupt()). El corpus de banca ronda las
+    # 480h, así que con 300 el demo dispara la pausa humana; súbelo para auto-aprobar.
+    multiagent_review_threshold_hours: float = 300.0
+
     # ── Observabilidad / logging (sesión 03) ───────────────────────────────
     # "development" -> logs de consola legibles y coloreados.
     # "production"  -> logs en JSON, listos para Elasticsearch/Loki/CloudWatch.

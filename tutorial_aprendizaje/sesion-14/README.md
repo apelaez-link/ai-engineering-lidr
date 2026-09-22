@@ -58,6 +58,23 @@ que redacta no consulta la BBDD y viceversa) y **HITL obligatorio** antes de cua
 efecto (abrir incidencia, notificar) — que en un servicio público es un requisito, no un extra.
 La auditoría con `structlog` es justo lo que un ayuntamiento exige para trazabilidad.
 
-## Estado
-Material de estudio (no construido). Ejercicio no entregado. **Pieza central del Proyecto Final** si
-el copiloto se plantea como sistema multi-agente con revisión humana.
+## Estado y ejecución
+- **Sistema multi-agente CONSTRUIDO** (Opción B), rama `session-14/pre-work` (parte de
+  `session-13/pre-work`, así que incluye S12 + S13 + S14). Código en
+  [`app/multiagent/`](../../app/multiagent):
+  - `privileges.py` — `AGENT_PRIVILEGES` (cada agente, sus tools) + `enforce_privilege`
+    (comprobación real, no un `if` interno; lanza `PrivilegeError`) + auditoría structlog. **Niveles 1 y 3.**
+  - `build.py` — el **supervisor** (solo enruta, `Command(goto=...)`), los **4 workers**
+    con privilegio mínimo (cada uno usa SOLO su tool, `Command(goto="supervisor", ...)`) y
+    el nodo **`human_review`** con `interrupt()`. Construido a mano con `StateGraph` +
+    `Command` (NO `create_supervisor`). **Niveles 1 y 2.**
+  - `router.py` — `POST /multiagent/estimate` (arranque) y `POST /multiagent/resume/{thread_id}`
+    (reanudación), ambos con checkpointer AsyncPostgresSaver. **Nivel 2.**
+  - `state.py` — `MultiAgentState` con reducers acumuladores (`budget_matches`, `errors`, `audit`).
+- Config nueva: `MULTIAGENT_REVIEW_THRESHOLD_HOURS` (umbral de horas para exigir revisión humana).
+- **Tests:** `tests/multiagent/` (6; privilegios + un run completo que PARA en revisión humana
+  con MemorySaver y REANUDA con approve). Suite total: 173 passed, 2 skipped.
+- Reutiliza los pasos LLM de S13, la búsqueda de S10, el generador de S11 y las tools de S12.
+- **Cómo ejecutarlo (S12+S13+S14 seguidas):** ver [`EJECUCION.md`](EJECUCION.md).
+- **Entrega:** rama `session-14/pre-work` (deadline pasado; suma al certificado por la vía de
+  ejercicios). **Pieza central del Proyecto Final** (copiloto multi-agente con revisión humana).
