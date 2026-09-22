@@ -52,6 +52,25 @@ LangGraph es **el framework con el que orquestar la capa de agentes** del copilo
 bucle a mano de la S12. Para el capstone, un grafo LangGraph con checkpointer + Logfire cubre de
 golpe "capa de agentes" + parte de la observabilidad.
 
-## Estado
-Material de estudio (no construido). Ejercicio no entregado. Es una de las piezas que **absorbe el
-Proyecto Final** si montamos ahí la capa de agentes con LangGraph.
+## Estado y ejecución
+- **Grafo CONSTRUIDO** (Opción B, sobre nuestro repo), en la rama `session-13/pre-work` (parte
+  de `session-12/pre-work`, así que incluye también el agente de la S12). Código en
+  [`app/graph/`](../../app/graph):
+  - `state.py` — `EstimationState` (TypedDict) con el **reducer acumulador**
+    `budget_matches: Annotated[list, operator.add]` (y `errors`). **Nivel 1.**
+  - `build.py` — los **5 nodos** como funciones puras async (reusan hybrid_search de S10,
+    generate_estimate de S11, verify_citations de S11) + el cableado del `StateGraph` + la
+    **arista condicional** `validate → needs_review | validated` (**Nivel 3**).
+  - `router.py` — `POST /graph/estimate`, compilando con el **checkpointer
+    `AsyncPostgresSaver`** sobre el Postgres del proyecto + `thread_id` (**Nivel 2**).
+  - `observability.py` — configuración de **Logfire** + span por nodo (**Nivel 2**).
+  - `deps.py` — inyección de sesión BBDD + embedder en los nodos vía closure.
+- Config nueva: `GRAPH_CHECKPOINTER_ENABLED`, `GRAPH_CHECKPOINTER_URL` (DSN psycopg),
+  `LOGFIRE_ENABLED`. Deps: `langgraph`, `langgraph-checkpoint-postgres`, `logfire`, `psycopg`.
+- **Tests:** `tests/graph/` (5; parchean LLM + búsqueda, ejecutan el grafo entero sin red ni
+  BBDD y comprueban el reducer y la arista condicional). Suite total: 167 passed, 2 skipped.
+- Los nodos LLM usan **nuestra stack** (litellm + Instructor + gpt-4o-mini): la S13 **no
+  requiere gpt-5**.
+- **Cómo ejecutarlo (y la S12 seguida):** ver [`EJECUCION.md`](EJECUCION.md).
+- **Entrega:** rama `session-13/pre-work` (deadline pasado; suma al certificado por la vía de
+  ejercicios). Es una de las piezas que **absorbe el Proyecto Final** (capa de agentes).

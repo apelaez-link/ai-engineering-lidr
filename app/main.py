@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agent import router as agent
 from app.embedding_pipeline import router as embeddings
+from app.graph import router as graph
 from app.logging_config import configure_logging, get_logger
 from app.routers import estimations, sessions
 
@@ -58,6 +59,10 @@ app.include_router(embeddings.router)
 # -> POST /agent/estimate (transcripción -> estimación + traza + coste).
 # Se incluye SIN prefijo (path completo en el propio router), como el de embeddings.
 app.include_router(agent.router)
+
+# Orquestación con LangGraph (sesión 13): el flujo de estimación como grafo de estados.
+# -> POST /graph/estimate (transcripción -> estimación + estado, con checkpointer + Logfire).
+app.include_router(graph.router)
 
 # Ficheros estáticos: demo de streaming SSE en HTML puro (sin Streamlit).
 # Disponible en http://localhost:8000/static/sse_demo.html

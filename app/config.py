@@ -131,6 +131,20 @@ class Settings(BaseSettings):
     # contexto arrastrado = menos coste; ver lección 6).
     agent_search_k: int = 5
 
+    # ── Orquestación con LangGraph (sesión 13) ─────────────────────────────
+    # Checkpointer del grafo: persiste el estado por thread_id en Postgres
+    # (AsyncPostgresSaver). Crea SUS PROPIAS tablas (checkpoints...), convive con
+    # pgvector en la misma BBDD. Apágalo (false) para correr el grafo sin persistencia.
+    graph_checkpointer_enabled: bool = True
+    # DSN del checkpointer en formato PSYCOPG (postgresql://…), NO +asyncpg: langgraph
+    # usa psycopg, no asyncpg. Mismo Postgres del proyecto (localhost:5433).
+    graph_checkpointer_url: str = (
+        "postgresql://estimator:estimator@localhost:5433/estimator"
+    )
+    # Observabilidad del grafo con Logfire (span por nodo). Con LOGFIRE_TOKEN exporta a
+    # la nube de Logfire; sin token corre en local sin enviar nada.
+    logfire_enabled: bool = True
+
     # ── Observabilidad / logging (sesión 03) ───────────────────────────────
     # "development" -> logs de consola legibles y coloreados.
     # "production"  -> logs en JSON, listos para Elasticsearch/Loki/CloudWatch.
