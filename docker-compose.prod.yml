@@ -1,0 +1,97 @@
+# Stack "de producción local" del estimador (sesión 15).
+#
+# Arranca todo el sistema con un comando:
+#     docker compose -f docker-compose.prod.yml up --build
+#
+# Fronteras de red (lo importante del ejercicio):
+#   - gateway    -> ÚNICO servicio PÚBLICO (puerto 3000 del host). Hace de backend de
+#                   negocio: recibe las peticiones y las reenvía al servicio IA inyectando
+#                   la cabecera X-Service-Token.
+#   - ai-service -> INTERNO: NO tiene `ports:`, solo `expose`. Nadie lo alcanza desde el
+#                   host; solo el gateway, por la red interna de compose.
+#   - postgres   -> INTERNO: datos + vectores (pgvector) + checkpointer del grafo, todo en
+#                   una sola base. (La "vector-db" de la arquitectura de referencia ES este
+#                   pgvector; nuestro proyecto consolida relacional + vector, ver docs.)
+#   - redis      -> INTERNO: backend de la caché.
+#
+# El .env (secretos) NO se versiona; docker-compose lo lee automáticamente para sustituir
+# ${VARIABLES}. Versionamos .env.example como plantilla.
+name: estimador-prod
+
+services:
+  # ── PÚBLICO: gateway (stand-in del backend de negocio) ─────────────────────
+  gateway:
+    image: nginx:1.27-alpine
+    ports:
+      - "3000:80" # única puerta pública del sistema
+    environment:
+      # Token que el gateway inyecta al llamar al servicio IA. Obligatorio.
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?define AI_SERVICE_TOKEN en tu .env}
+      # Que envsubst SOLO sustituya AI_SERVICE_TOKEN (y deje intactas las $variables de nginx).
+      NGINX_ENVSUBST_FILTER: "AI_SERVICE_TOKEN"
+    volumes:
+      - ./deploy/gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      ai-service:
+        condition: service_healthy
+
+  # ── INTERNO: servicio IA (este FastAPI). SIN ports: no accesible desde el host ──
+  ai-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "8000" # visible solo dentro de la red de compose
+    environment:
+      # Secretos y config (vienen del .env del host).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?define OPENAI_API_KEY en tu .env}
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?define AI_SERVICE_TOKEN en tu .env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # La base es el servicio `postgres` en la red interna (puerto 5432).
+      DATABASE_URL: postgresql+asyncpg://estimator:estimator@postgres:5432/estimator
+      GRAPH_CHECKPOINTER_URL: postgresql://estimator:estimator@postgres:5432/estimator
+      # Caché en el servicio `redis`.
+      CACHE_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      # Producción: logs en JSON; reranking apagado (no arrastrar torch en caliente).
+      ENV: production
+      LOG_LEVEL: INFO
+      RERANK_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── INTERNO: Postgres + pgvector (relacional + vector + checkpointer) ─────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: estimator
+      POSTGRES_USER: estimator
+      POSTGRES_PASSWORD: estimator
+    # SIN ports: en producción es interno. Para depurar desde el host, descomenta:
+    # ports:
+    #   - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estimator"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # ── INTERNO: Redis (caché) ────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  pgdata:
+  redisdata:

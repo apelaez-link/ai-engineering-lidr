@@ -145,6 +145,13 @@ class Settings(BaseSettings):
     # la nube de Logfire; sin token corre en local sin enviar nada.
     logfire_enabled: bool = True
 
+    # ── Despliegue / puesta en producción (sesión 15) ──────────────────────
+    # Token de servicio: en producción el servicio IA es INTERNO y solo lo llama el
+    # gateway, que se identifica con la cabecera X-Service-Token. Si está vacío (dev),
+    # la autenticación se DESACTIVA (ver app/security.py). En docker-compose.prod.yml
+    # se define, y pasa a ser obligatorio (peticiones sin token válido -> 401).
+    ai_service_token: str = ""
+
     # ── Sistema multi-agente (sesión 14) ────────────────────────────────────
     # Umbral de horas por encima del cual una estimación NO se aprueba sola: pasa por
     # revisión humana (human-in-the-loop con interrupt()). El corpus de banca ronda las

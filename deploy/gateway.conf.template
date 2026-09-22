@@ -1,0 +1,32 @@
+# Config del gateway público (nginx) — sesión 15.
+#
+# La imagen oficial de nginx procesa este .template con envsubst al arrancar y escribe el
+# resultado en /etc/nginx/conf.d/default.conf. Con NGINX_ENVSUBST_FILTER=AI_SERVICE_TOKEN,
+# SOLO se sustituye ${AI_SERVICE_TOKEN}; las $variables propias de nginx quedan intactas.
+#
+# El gateway es la única puerta pública: reenvía todo al servicio IA interno
+# (ai-service:8000) INYECTANDO la cabecera X-Service-Token. Así el servicio IA nunca se
+# expone a internet y solo acepta peticiones que traen el token correcto.
+
+upstream ai_service {
+    server ai-service:8000;
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    # Liveness: el gateway expone /health del servicio IA (sin token; es endpoint exento).
+    location = /health {
+        proxy_pass http://ai_service/health;
+    }
+
+    # Todo lo demás: reenvío al servicio IA con el token de servicio inyectado.
+    location / {
+        proxy_set_header X-Service-Token "${AI_SERVICE_TOKEN}";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_read_timeout 120s;
+        proxy_pass http://ai_service;
+    }
+}

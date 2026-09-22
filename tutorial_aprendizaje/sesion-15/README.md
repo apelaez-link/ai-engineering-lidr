@@ -51,6 +51,25 @@ internos, `/health`, y **token de servicio** entre gateway y IA. Para un servici
 el aislamiento de red y los secretos fuera del código no son opcionales. `docs/deployment-local.md`
 es directamente un entregable del proyecto.
 
-## Estado
-Material de estudio (no construido). Ejercicio no entregado (deadline pasado, lunes 20 sept). **Es la
-capa que cierra el Proyecto Final** — se construye una sola vez, al final, sobre lo de S13/S14.
+## Estado y ejecución
+- **Dockerización CONSTRUIDA** (Opción B), rama `session-15/pre-work` (parte de
+  `session-14/pre-work`, así que el worktree contiene S12+S13+S14+S15). Artefactos:
+  - [`Dockerfile`](../../Dockerfile) — imagen del servicio IA (FastAPI) con uv, healthcheck a `/health`.
+  - [`docker-compose.prod.yml`](../../docker-compose.prod.yml) — stack completo: **gateway**
+    (nginx, público :3000), **ai-service** (FastAPI, INTERNO, sin `ports:`), **postgres**
+    (pgvector: datos+vector+checkpointer) y **redis** (caché), todos internos salvo el gateway.
+  - [`deploy/gateway.conf.template`](../../deploy/gateway.conf.template) — nginx que inyecta `X-Service-Token`.
+  - [`app/security.py`](../../app/security.py) — middleware que exige el token (401 si falta);
+    inerte en local si `AI_SERVICE_TOKEN` está vacío.
+  - [`.env.example`](../../.env.example) actualizado (incluye `AI_SERVICE_TOKEN`, DB URLs, etc.);
+    `.env` sigue gitignoreado.
+  - [`docs/deployment-local.md`](../../docs/deployment-local.md) — el entregable: diagrama,
+    variables, arranque en un comando y las 4 comprobaciones de aceptación.
+- **Nota de arquitectura:** nuestro proyecto consolida relacional + vector en **un** Postgres
+  con pgvector (una sola `DATABASE_URL`), así que la "vector-db" de la arquitectura de
+  referencia ES el servicio `postgres`; el 4º servicio real que usamos es `redis`.
+- **Tests:** `tests/test_service_token.py` (3: /health exento, 401 sin token, auth off si el
+  token está vacío). Suite total: 176 passed, 2 skipped.
+- **Cómo ejecutarlo:** ver [`EJECUCION.md`](EJECUCION.md) (modo local uv, o el stack Docker).
+- **Entrega:** rama `session-15/pre-work` (deadline lun 20 sept pasado; suma al certificado por
+  la vía de ejercicios). **Es la capa de despliegue del Proyecto Final.**

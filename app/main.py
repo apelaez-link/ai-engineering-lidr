@@ -15,6 +15,7 @@ from app.embedding_pipeline import router as embeddings
 from app.graph import router as graph
 from app.logging_config import configure_logging, get_logger
 from app.multiagent import router as multiagent
+from app.security import ServiceTokenMiddleware
 from app.routers import estimations, sessions
 
 # Configuramos structlog ANTES de crear la app, para que cualquier log de arranque
@@ -42,6 +43,10 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+# Autenticación servicio-a-servicio (sesión 15): exige X-Service-Token salvo en /health
+# y la documentación. Inerte en local (si AI_SERVICE_TOKEN está vacío); obligatorio en Docker.
+app.add_middleware(ServiceTokenMiddleware)
 
 # Registramos el router. Todos sus endpoints colgarán de /api/v1
 # -> POST /estimate queda en POST /api/v1/estimate, etc.
