@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.agent import router as agent
 from app.embedding_pipeline import router as embeddings
 from app.logging_config import configure_logging, get_logger
 from app.routers import estimations, sessions
@@ -52,6 +53,11 @@ app.include_router(sessions.router, prefix="/api/v1")
 # Rutas con path completo en el propio router (POST /embeddings/ingest, POST /search),
 # así que se incluye SIN prefijo. Son subsistema del Módulo 3 RAG (fuera de /api/v1).
 app.include_router(embeddings.router)
+
+# Capa de agentes (sesión 12): agente a mano sobre la Responses API.
+# -> POST /agent/estimate (transcripción -> estimación + traza + coste).
+# Se incluye SIN prefijo (path completo en el propio router), como el de embeddings.
+app.include_router(agent.router)
 
 # Ficheros estáticos: demo de streaming SSE en HTML puro (sin Streamlit).
 # Disponible en http://localhost:8000/static/sse_demo.html

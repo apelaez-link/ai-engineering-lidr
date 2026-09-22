@@ -117,6 +117,20 @@ class Settings(BaseSettings):
     # exige descripciones muy parecidas semánticamente para reutilizar respuesta.
     semantic_cache_threshold: float = 0.92
 
+    # ── Capa de agentes (sesión 12): agente a mano sobre la Responses API ───
+    # Modelo del agente. El enunciado pide gpt-5 medium. La Responses API funciona
+    # también con gpt-4o/gpt-4o-mini: si tu cuenta no tiene acceso a gpt-5, pon
+    # AGENT_MODEL=gpt-4o (el bucle detecta que no es modelo de razonamiento y omite
+    # el parámetro `reasoning`). Para DEPURAR el bucle barato: gpt-5-mini / gpt-4o-mini.
+    agent_model: str = "gpt-5"
+    # Esfuerzo de razonamiento (solo aplica a modelos gpt-5/o*; se ignora en gpt-4o).
+    agent_reasoning_effort: str = "medium"
+    # CONDICIÓN DE PARADA del bucle: tope de vueltas antes de forzar el cierre.
+    agent_max_steps: int = 8
+    # Referencias que devuelve cada llamada a search_budgets (recall acotado = menos
+    # contexto arrastrado = menos coste; ver lección 6).
+    agent_search_k: int = 5
+
     # ── Observabilidad / logging (sesión 03) ───────────────────────────────
     # "development" -> logs de consola legibles y coloreados.
     # "production"  -> logs en JSON, listos para Elasticsearch/Loki/CloudWatch.

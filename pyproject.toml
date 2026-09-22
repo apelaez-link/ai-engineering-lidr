@@ -64,6 +64,12 @@ dependencies = [
     "asyncpg>=0.29",
     "pgvector>=0.3",
     "alembic>=1.13",
+    #   greenlet        -> lo requiere SQLAlchemy para su capa async (sin él, cualquier
+    #                      operación sobre la sesión async —incluido abrir/cerrar la
+    #                      dependencia get_session— lanza "the greenlet library is
+    #                      required". Normalmente entra como transitiva de sqlalchemy,
+    #                      pero lo fijamos explícito para que el entorno sea reproducible.
+    "greenlet>=3.0",
     # Reranking con cross-encoder (sesión 10). sentence-transformers carga un modelo
     # cross-encoder LOCAL (ms-marco-MiniLM) que puntúa pares (consulta, documento) para
     # reordenar los candidatos recuperados (patrón recall-then-rerank). Arrastra torch,

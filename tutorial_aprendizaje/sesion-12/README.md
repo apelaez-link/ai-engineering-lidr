@@ -70,6 +70,16 @@ enruta entre `search_ordenanzas` (RAG S10), `consultar_incidencias` (SQL sobre I
 `estimar_resolucion` (tu estimador). El bucle a mano de la S12 es la base; **LangGraph (S13)** es
 el framework para orquestarlo.
 
-## 5. Estado y siguiente paso
-- **S12 no entregada** (te perdiste el directo; deadline 30 ago pasado). El código del agente **aún no está construido** en el repo — esto es solo el material de estudio.
-- **Siguiente:** construir el agente (Opción B, sobre nuestro repo), reutilizando el retrieval de S10 y el generador de S11 como tools. Cuando quieras, lo montamos como hicimos con S10/S11.
+## 5. Estado y ejecución
+- **Agente CONSTRUIDO** (Opción B, sobre nuestro repo), reutilizando el retrieval híbrido de
+  S10 como tool. Código en [`app/agent/`](../../app/agent): `tools.py` (search_budgets +
+  calculate_estimate + validate_estimate, schemas planos de la Responses API), `loop.py`
+  (el bucle a mano con `client.responses.parse`, `function_call`/`function_call_output`,
+  `call_id`, `previous_response_id`, `MAX_STEPS`, traza y coste), `router.py`
+  (`POST /agent/estimate`) y `schemas.py` (`AgentEstimate` + `AgentRun`). Config nueva en
+  `app/config.py` (`AGENT_MODEL`, `AGENT_MAX_STEPS`, `AGENT_SEARCH_K`, `AGENT_REASONING_EFFORT`).
+- **Tests:** `tests/agent/` (9 tests, sin red ni BBDD; el bucle se prueba con un cliente
+  OpenAI falso). Toda la suite en verde (162 passed, 2 skipped de BBDD).
+- **Cómo ejecutarlo paso a paso:** ver [`EJECUCION.md`](EJECUCION.md).
+- **Entrega:** rama `session-12/pre-work` (deadline del ejercicio ya pasó; se entrega tarde,
+  suma al certificado por la vía de ejercicios).
